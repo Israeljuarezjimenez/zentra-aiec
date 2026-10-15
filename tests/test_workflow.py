@@ -6,11 +6,11 @@ from aiec.telegram import DeliveryUncertain, TelegramRejected
 
 
 def send(service, ticket):
-    return service.send_approved(ticket["_id"], ticket["draft"]["id"], ticket["revision"], ticket["draft"]["text"])
+    return service.send_response(ticket["_id"], ticket["draft"]["id"], ticket["revision"], ticket["draft"]["text"])
 
 
 def test_replayed_message_does_not_duplicate_or_invalidate_draft(repo, drafted):
-    ticket_id, inserted = repo.receive(drafted["chat_id"], 1, "Lucía", "Quiero publicidad. Tengo $15,000 mensuales.")
+    ticket_id, inserted = repo.receive(drafted["chat_id"], 1, "Lucía", "Quiero volantes. Tengo $15,000 para el pedido.")
     current = repo.get(ticket_id)
     assert inserted is False
     assert current["revision"] == 1
@@ -18,7 +18,7 @@ def test_replayed_message_does_not_duplicate_or_invalidate_draft(repo, drafted):
     assert current["draft"]["id"] == drafted["draft"]["id"]
 
 
-def test_new_message_invalidates_draft_and_old_approval(service, repo, telegram, drafted):
+def test_new_message_invalidates_prepared_response(service, repo, telegram, drafted):
     repo.receive(drafted["chat_id"], 2, "Lucía", "Mi presupuesto cambió.")
     with pytest.raises(ConflictError):
         send(service, drafted)
@@ -47,7 +47,7 @@ def test_analysis_rejects_unknown_fields_and_priority():
         Analysis(service="inventado", summary="algo", priority="urgente", priority_reason="algo", evidence=["algo"])
 
 
-def test_double_approval_only_sends_once(service, repo, telegram, drafted):
+def test_same_prepared_response_only_sends_once(service, repo, telegram, drafted):
     send(service, drafted)
     with pytest.raises(ConflictError):
         send(service, drafted)

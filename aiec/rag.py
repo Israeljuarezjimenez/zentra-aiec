@@ -34,7 +34,7 @@ def keywords(text, limit=32):
 
 class KnowledgeBase:
     def __init__(self, folder=None, storage=None, catalog_path=None, embedder=None, reranker=None,
-                 *, min_similarity=.80, min_relevance=-7.):
+                 *, min_similarity=.83, min_relevance=-5.5, min_semantic_similarity=.86):
         self.folder = Path(folder or ROOT / "knowledge")
         self.storage = Path(storage or ROOT / ".runtime" / "rag")
         self.catalog_path = Path(catalog_path or ROOT / "aiec" / "catalog.json")
@@ -45,6 +45,8 @@ class KnowledgeBase:
         self.reranker = reranker or LocalReranker(self.storage / "models")
         self.min_similarity = min_similarity
         self.min_relevance = min_relevance
+        self.min_semantic_similarity = max(min_similarity, min_semantic_similarity)
+        self.retrieval_config = f'{PIPELINE_KEY}:sim={min_similarity}:semantic={self.min_semantic_similarity}:rel={min_relevance}'
         self._cache_lock = RLock()
         self._snapshot = None
         self._schema()
@@ -90,7 +92,8 @@ class KnowledgeBase:
         with self.connect() as db:
             meta = dict(db.execute("SELECT key, value FROM meta"))
             sources = [dict(row) for row in db.execute("SELECT * FROM documents ORDER BY source")]
-        ready = meta.get("model") == MODEL_KEY and meta.get("pipeline") == PIPELINE_KEY and bool(meta.get("generation"))
+        ready = (meta.get("model") == MODEL_KEY and meta.get("pipeline") == PIPELINE_KEY
+                 and meta.get('retrieval_config') == self.retrieval_config and bool(meta.get("generation")))
         stale = ready and meta.get("fingerprint") != self.fingerprint()
         return {"ready": ready, "stale": stale, "generation": meta.get("generation"),
                 "indexed_at": meta.get("indexed_at"), "model": MODEL_KEY, "pipeline": PIPELINE_KEY,
@@ -130,7 +133,7 @@ class KnowledgeBase:
                 old[chunk["id"]] = np.asarray(vector, dtype="<f4").tobytes()
         if before != self.fingerprint():
             raise ValueError("Los documentos cambiaron durante la actualización. Intenta de nuevo.")
-        generation = digest(PIPELINE_KEY + str(self.min_relevance) + "".join(c["id"] for c in chunks))
+        generation = digest(self.retrieval_config + "".join(c["id"] for c in chunks))
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             db.execute("DELETE FROM search")
@@ -144,6 +147,7 @@ class KnowledgeBase:
             db.executemany("INSERT INTO search VALUES(?,?,?)", [(c["id"], c["title"], c["text"]) for c in chunks])
             db.executemany("INSERT OR REPLACE INTO meta VALUES(?,?)", {
                 "model": MODEL_KEY, "pipeline": PIPELINE_KEY, "generation": generation, "fingerprint": before,
+                'retrieval_config': self.retrieval_config,
                 "indexed_at": datetime.now(timezone.utc).isoformat(),
             }.items())
             if meta.get("generation") != generation:
@@ -185,6 +189,11 @@ class KnowledgeBase:
         dense = np.argsort(-similarities, kind="stable")[:30]
         scores = defaultdict(float)
         positions = {row["id"]: i for i, row in enumerate(rows)}
+        # Una coincidencia solo semántica exige evidencia más fuerte que una respaldada
+        # también por términos exactos. Reduce asociaciones comerciales demasiado vagas.
+        thresholds = np.full(len(rows), self.min_semantic_similarity)
+        for chunk_id in lexical:
+            thresholds[positions[chunk_id]] = self.min_similarity
         for rank, index in enumerate(dense, 1):
             scores[int(index)] += 1 / (60 + rank)
         for rank, chunk_id in enumerate(lexical, 1):
@@ -196,12 +205,12 @@ class KnowledgeBase:
             raise ValueError("La revisión de relevancia no produjo resultados válidos.")
         ranked = sorted(zip(candidates, relevances, strict=True), key=lambda pair: (-float(pair[1]), -scores[pair[0]]))
         eligible = [float(relevance) for index, relevance in ranked
-                    if similarities[index] >= self.min_similarity and relevance >= self.min_relevance]
+                    if similarities[index] >= thresholds[index] and relevance >= self.min_relevance]
         best_relevance = max(eligible, default=self.min_relevance)
         for index, relevance in ranked:
             row = rows[index]
             text_key = digest(row["text"].lower())
-            if (similarities[index] < self.min_similarity or relevance < self.min_relevance
+            if (similarities[index] < thresholds[index] or relevance < self.min_relevance
                     or relevance < best_relevance - 3.
                     or text_key in seen or per_source[row["source"]] >= 2):
                 continue
@@ -257,7 +266,8 @@ class KnowledgeBase:
                 continue
             seen.add(key)
             verified.append({"chunk_id": source["id"], "source": source["source"], "title": source["title"],
-                             "page": source["page"], "version": source["version"], "quote": citation.quote.strip()})
+                             "page": source["page"], "version": source["version"], "quote": citation.quote.strip(),
+                             "source_urls": list(dict.fromkeys(re.findall(r'https://[^\s<>]+', source["text"])))[:10]})
         return {"context_id": context_id, "generation": row["generation"], "query": payload["query"],
                 "status": payload["status"], "citations": verified}
 

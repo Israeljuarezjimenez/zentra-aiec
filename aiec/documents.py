@@ -84,6 +84,16 @@ def catalog_document(path: Path):
             f"Servicio: {service['name']}\n{service['description']}\n"
             f"Precio: {price_note}"
         )
+    for reference in data.get("reference_prices", []):
+        sections.append(
+            f"Referencia externa {reference['id']}: {reference['name']}\n"
+            f"Proveedor: {reference['provider']}; NO es una oferta de {data['business']}.\n"
+            f"Cantidad: {reference['quantity']} {reference.get('unit', 'piezas')}. "
+            f"Precio publicado: {'desde ' if reference.get('price_kind') == 'desde' else ''}${reference['price_mxn']:,.2f} MXN "
+            f"{reference['tax']}. {reference['specifications']}\n"
+            f"Fuente: {reference['url']}\nConsultada: {reference['verified_on']}. "
+            "Vencimiento no publicado; confirmar disponibilidad con el proveedor."
+        )
     sections.extend("Regla del negocio: " + rule for rule in data["rules"])
     text = "\n\n".join(sections)
     return Document("catalogo", "Catálogo y reglas del negocio", tuple((None, s) for s in sections), digest(text))

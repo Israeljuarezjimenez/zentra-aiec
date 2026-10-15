@@ -34,3 +34,20 @@ def test_failed_bot_verification_releases_panel_port(service, monkeypatch):
         serve(service, Settings(secret_key="test-" * 10))
     with socket.socket() as available:
         available.bind(("127.0.0.1", servers[0].server_port))
+
+
+def test_disabled_claude_starts_only_receiver_and_never_automation(service, repo, monkeypatch):
+    from types import SimpleNamespace
+    launched = []
+    monkeypatch.setattr('aiec.server.make_server', lambda *_args, **_kwargs: SimpleNamespace(
+        serve_forever=lambda: None, server_close=lambda: None))
+    monkeypatch.setattr('aiec.server.check_bot', lambda _telegram: {'username':'TestBot'})
+    class Thread:
+        def __init__(self, *, name, **_kwargs):
+            self.name = name
+        def start(self):
+            launched.append(self.name)
+    monkeypatch.setattr('aiec.server.threading.Thread', Thread)
+    serve(service, Settings(secret_key='test-' * 10))
+    assert launched == ['telegram-poller']
+    assert repo.automation_state()['status'] == 'desactivado'

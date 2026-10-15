@@ -8,23 +8,6 @@ function showToast(message) {
   toastTimer = setTimeout(() => { toast.hidden = true; }, 5000);
 }
 
-document.querySelectorAll('[data-copy]').forEach((button) => {
-  button.addEventListener('click', async () => {
-    const source = document.getElementById(button.dataset.copy);
-    if (!source) return;
-    try {
-      await navigator.clipboard.writeText(source.textContent.trim());
-      showToast('Instrucción copiada. Pégala en Claude Desktop.');
-    } catch {
-      const range = document.createRange();
-      range.selectNodeContents(source);
-      window.getSelection().removeAllRanges();
-      window.getSelection().addRange(range);
-      showToast('Texto seleccionado. Usa ⌘C o Ctrl+C para copiar.');
-    }
-  });
-});
-
 const conversationList = document.querySelector('[data-conversation-list]');
 const search = document.getElementById('conversation-search');
 const rows = [...document.querySelectorAll('[data-conversation-row]')];
@@ -67,3 +50,45 @@ document.querySelectorAll('form').forEach((form) => {
     }
   });
 });
+
+const catalogSearch = document.getElementById('catalog-search');
+const providerSelect = document.getElementById('catalog-provider');
+const priceCards = [...document.querySelectorAll('[data-price-card]')];
+function filterCatalog() {
+  const query = normalize(catalogSearch?.value.trim() || '');
+  const provider = providerSelect?.value || '';
+  let visible = 0;
+  priceCards.forEach((card) => {
+    card.hidden = !normalize(card.textContent).includes(query) || (provider && card.dataset.provider !== provider);
+    if (!card.hidden) visible += 1;
+  });
+  const empty = document.getElementById('catalog-empty');
+  if (empty) empty.hidden = visible > 0;
+}
+catalogSearch?.addEventListener('input', filterCatalog);
+providerSelect?.addEventListener('change', filterCatalog);
+
+if (document.body.dataset.live === 'true') {
+  const initialVersion = document.body.dataset.stateVersion;
+  const indicator = document.querySelector('[data-live-status]');
+  async function refreshPanel() {
+    try {
+      if (!document.hidden) {
+        const response = await fetch('/api/panel', { cache: 'no-store', credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Panel unavailable');
+        const state = await response.json();
+        const busy = document.activeElement?.matches('input,textarea,select') ||
+          document.querySelector('details[open]') || Boolean(search?.value.trim());
+        if (state.version !== initialVersion && !busy) {
+          location.reload();
+          return;
+        }
+        if (indicator) indicator.textContent = 'Conversaciones actualizadas en vivo';
+      }
+    } catch {
+      if (indicator) indicator.textContent = 'Reconectando con el panel…';
+    }
+    setTimeout(refreshPanel, 7000);
+  }
+  setTimeout(refreshPanel, 7000);
+}

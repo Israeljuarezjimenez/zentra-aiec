@@ -45,7 +45,7 @@ def configure_logs():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="AIEC · Telegram, MongoDB y Claude Desktop, sin API de pago.")
+    parser = argparse.ArgumentParser(description="Impresos San Martín · Telegram, RAG y Claude.")
     parser.add_argument("command", choices=["setup", "doctor", "run", "demo", "mcp", "claude-config",
                                             "load-examples", "rag-index", "rag-search", "rag-status", "rag-eval"])
     parser.add_argument("query", nargs="?", help="Texto de búsqueda para rag-search.")
@@ -96,16 +96,23 @@ def main(argv=None):
             from .demo import demo_service
             service = demo_service()
         else:
-            settings.validate(telegram=args.command in ("run", "doctor"), web=args.command == "run")
+            settings.validate(telegram=args.command in ("run", "doctor", "mcp"), web=args.command == "run")
             repo = Repository.connect(settings)
-            service = Service(repo, Telegram(settings.bot_token) if args.command in ("run", "doctor") else None,
+            service = Service(repo, Telegram(settings.bot_token) if args.command in ("run", "doctor", "mcp") else None,
                               knowledge=KnowledgeBase())
+            if args.command == "run":
+                from .responses import configured_responder
+                service.responder = configured_responder(settings)
 
         if args.command == "doctor":
             print("✓ Conexión con MongoDB e índices disponibles.")
             me = check_bot(service.telegram)
             print(f"✓ Bot de Telegram válido: @{me['username']}.")
-            print("La conexión de Claude se verifica desde Claude Desktop al utilizar las herramientas AIEC.")
+            state = service.knowledge.status()
+            print("Claude automático: configurado; sin probar consumo de API." if settings.auto_reply_enabled and settings.anthropic_api_key else
+                  "✓ Envío directo desde Claude Desktop por MCP, sin API de pago. Generación en segundo plano: desactivada.")
+            print("✓ Conocimiento actualizado." if state['ready'] and not state['stale'] else
+                  "Prepara el conocimiento con: .venv/bin/python -m aiec rag-index")
             print("Listo para ejecutar: .venv/bin/python -m aiec run")
             return 0
 

@@ -1,5 +1,5 @@
 """Operaciones atómicas sobre una conversación por cliente de Telegram."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
 from pymongo import MongoClient, ReturnDocument
@@ -60,7 +60,9 @@ class Repository:
                 }], "$slice": -HISTORY_LIMIT}},
                 "$inc": {"revision": 1},
                 "$set": {"name": name, "updated_at": timestamp,
-                         "status": "pendiente", "draft": None, "analysis": None},
+                         "last_customer_at": timestamp.isoformat(),
+                         "status": "pendiente", "draft": None, "analysis": None,
+                         "automation": {"failures": 0}},
             },
         )
         return ticket["_id"], bool(result.modified_count)
@@ -86,10 +88,51 @@ class Repository:
             counts[row["_id"]] = row["total"]
         return counts
 
+    def claim_next(self, since, *, debounce_seconds=2, lease_seconds=180):
+        """Una sola generación por conversación, con recuperación después de un reinicio.
+
+        No activar automáticamente conversaciones históricas anteriores a la instalación.
+        Un nuevo mensaje sí actualiza updated_at y vuelve a entrar en la cola.
+        """
+        timestamp = now()
+        return self.tickets.find_one_and_update(
+            {"status": {"$in": ["pendiente", "revision"]},
+             "last_customer_at": {"$gte": since.isoformat()},
+             "updated_at": {"$lte": timestamp - timedelta(seconds=debounce_seconds)},
+             "delivery_state": {"$nin": ["enviando", "incierto"]},
+             "$and": [
+                 {"$or": [{"processing.until": {"$lte": timestamp}}, {"processing": {"$exists": False}}]},
+                 {"$or": [{"automation.next_at": {"$lte": timestamp}}, {"automation.next_at": {"$exists": False}}]},
+                 {"$or": [{"automation.failures": {"$lt": 3}}, {"automation.failures": {"$exists": False}}]},
+             ]},
+            {"$set": {"processing": {"id": uuid4().hex,
+                                       "until": timestamp + timedelta(seconds=lease_seconds)}}},
+            sort=[("updated_at", 1)], return_document=ReturnDocument.AFTER,
+        )
+
+    def release_claim(self, ticket_id, claim_id, *, revision, error=None):
+        # Un mensaje nuevo no hereda el error ni la espera de una generación anterior.
+        updates = {"$set": {"automation.error": error,
+                   "automation.next_at": now() + timedelta(seconds=30 if error else 0)},
+                   "$unset": {"processing": ""}}
+        if error:
+            updates["$inc"] = {"automation.failures": 1}
+        else:
+            updates["$set"]["automation.failures"] = 0
+        self.tickets.update_one({"_id": ticket_id, "processing.id": claim_id, "revision": revision}, updates)
+        self.tickets.update_one({"_id": ticket_id, "processing.id": claim_id},
+                                {"$unset": {"processing": ""}})
+
+    def automation_state(self):
+        state = self.state.find_one({"_id": "automation"}) or {"status": "sin_iniciar"}
+        if state.get("checked_at") and now() - state["checked_at"] > timedelta(minutes=1):
+            state["status"] = "sin_iniciar"
+        return state
+
     def save_draft(self, ticket_id, revision, analysis, text):
         draft = {"id": uuid4().hex, "revision": revision, "text": text, "created_at": now()}
         ticket = self.tickets.find_one_and_update(
-            {"_id": ticket_id, "revision": revision, "status": {"$ne": "cerrada"},
+            {"_id": ticket_id, "revision": revision, "status": {"$in": ["pendiente", "revision"]},
              "delivery_state": {"$nin": ["enviando", "incierto"]}},
             {"$set": {"analysis": analysis, "draft": draft,
                        "status": "revision", "updated_at": now()}},
@@ -99,12 +142,12 @@ class Repository:
             raise ConflictError("La solicitud cambió, está cerrada o tiene un envío sin resolver. Vuelve a consultarla.")
         return ticket
 
-    def begin_send(self, ticket_id, draft_id, revision, text):
+    def begin_send(self, ticket_id, draft_id, revision, text, *, analysis=None, origin='claude_desktop'):
         attempt = {"id": uuid4().hex, "text": text, "revision": revision,
-                   "created_at": now(), "draft_id": draft_id}
+                   "created_at": now(), "draft_id": draft_id, 'analysis': analysis, 'origin': origin}
         ticket = self.tickets.find_one_and_update(
             {"_id": ticket_id, "revision": revision, "draft.id": draft_id,
-             "draft.revision": revision, "status": "revision",
+             "draft.revision": revision, "draft.text": text, "status": "revision",
              "delivery_state": {"$nin": ["enviando", "incierto"]}},
             {"$set": {"delivery_state": "enviando", "attempt": attempt, "updated_at": now()}},
             return_document=ReturnDocument.AFTER,
@@ -126,6 +169,7 @@ class Repository:
             "$push": {"messages": {"$each": [{
                 "role": "agencia", "text": attempt["text"], "created_at": now(),
                 "telegram_message_id": telegram_message_id, "attempt_id": attempt_id,
+                "analysis": attempt.get('analysis'), "origin": attempt.get('origin', 'claude_desktop'),
             }], "$slice": -HISTORY_LIMIT}},
         }
         # Historial, estado y eliminación del borrador se confirman en una sola escritura.

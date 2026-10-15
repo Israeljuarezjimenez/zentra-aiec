@@ -2,7 +2,7 @@ import secrets
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from datetime import timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
@@ -10,12 +10,10 @@ from pymongo.errors import PyMongoError
 from werkzeug.utils import secure_filename
 
 from .repository import ConflictError
-from .prompts import review_prompt
 from .service import catalog
-from .telegram import DeliveryUncertain, TelegramRejected
 from .documents import EXTENSIONS, MAX_FILE_BYTES, read_document
 
-STATUSES = {"pendiente": "Pendiente", "revision": "Para revisar", "respondida": "Respondida", "cerrada": "Cerrada"}
+STATUSES = {"pendiente": "En cola", "revision": "Preparando respuesta", "respondida": "Respondida", "cerrada": "Archivada"}
 PRIORITIES = {"alta": "Alta", "media": "Media", "baja": "Baja"}
 
 
@@ -54,13 +52,18 @@ def create_app(service, secret_key):
     def common():
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(32)
+        state = service.panel_state()
         return {"demo": service.demo, "statuses": STATUSES, "priorities": PRIORITIES,
-                "batch_prompt": review_prompt(), "ticket_prompt": review_prompt,
+                "business": catalog(), "automation": service.repo.automation_state(),
+                "automatic_enabled": service.responder is not None,
+                'system': state['system'], 'state_version': state['version'],
                 "service_names": {s["id"]: s["name"] for s in catalog()["services"]},
-                "csrf": session["csrf"], "counts": service.repo.counts()}
+                "csrf": session["csrf"], "counts": state['counts']}
 
     @app.template_filter("localdate")
     def localdate(value):
+        if isinstance(value, str):
+            value = datetime.fromisoformat(value)
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         return value.astimezone(ZoneInfo("America/Mexico_City")).strftime("%d/%m · %H:%M")
@@ -79,36 +82,13 @@ def create_app(service, secret_key):
             ticket = service.repo.get(ticket_id)
         except ValueError:
             abort(404)
-        knowledge_warning = None
-        if service.knowledge is not None and ticket.get("draft"):
-            try:
-                service.knowledge.check_draft((ticket.get("analysis") or {}).get("knowledge"))
-            except ValueError as error:
-                knowledge_warning = str(error)
-        return render_template("detail.html", ticket=ticket, knowledge_warning=knowledge_warning)
+        return render_template("detail.html", ticket=ticket)
 
     def current_revision():
         try:
             return int(request.form["revision"])
         except (ValueError, KeyError):
             abort(400)
-
-    @app.post("/solicitudes/<ticket_id>/enviar")
-    def send(ticket_id):
-        revision = current_revision()
-        if request.form.get("confirm") != "si":
-            abort(400, description="Confirma que revisaste la respuesta y su destinatario.")
-        try:
-            service.send_approved(ticket_id, request.form.get("draft_id", ""), revision,
-                                  request.form.get("text", ""))
-            flash("Respuesta enviada y registrada en el historial.", "success")
-        except (ValueError, TelegramRejected) as error:
-            flash(str(error), "error")
-        except DeliveryUncertain:
-            flash("No sabemos si Telegram entregó la respuesta. El envío quedó bloqueado para evitar duplicados. Verifica con el destinatario antes de resolverlo.", "error")
-        except PyMongoError:
-            flash("No pudimos confirmar el registro en MongoDB. Actualiza la página y verifica el envío antes de volver a intentarlo.", "error")
-        return redirect(url_for("detail", ticket_id=ticket_id))
 
     @app.post("/solicitudes/<ticket_id>/cerrar")
     def close(ticket_id):
@@ -136,7 +116,16 @@ def create_app(service, secret_key):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "demo": service.demo}
+        return {"status": "ok", "demo": service.demo, "automation": service.repo.automation_state().get("status"),
+                'system': service.system_status()}
+
+    @app.get('/api/panel')
+    def panel_state():
+        return service.panel_state()
+
+    @app.get('/catalogo')
+    def catalog_page():
+        return render_template('catalog.html')
 
     @app.get("/guia")
     def guide():

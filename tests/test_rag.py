@@ -110,7 +110,7 @@ def test_modified_knowledge_invalidates_context_and_blocks_old_approval(knowledg
     assert draft["analysis"]["knowledge"]["citations"][0]["quote"].startswith("El anticipo")
     (knowledge.folder / "condiciones.md").write_text("ZENTRA42: el anticipo cambió al 50%.")
     with pytest.raises(ValueError, match="cambió"):
-        service.send_approved(ticket["_id"], draft["draft"]["id"], 1, draft["draft"]["text"])
+        service.send_response(ticket["_id"], draft["draft"]["id"], 1, draft["draft"]["text"])
     assert telegram.calls == []
     with pytest.raises(ValueError):
         knowledge.validate_citations(result["context_id"], [citation(result)], ticket_id=ticket["_id"], revision=1)
@@ -121,10 +121,10 @@ def test_modified_knowledge_invalidates_context_and_blocks_old_approval(knowledg
 
 def test_validated_sources_can_be_reviewed_and_sent(knowledge, service, ticket, analysis, telegram):
     service.knowledge = knowledge
-    result = service.knowledge_context(ticket)
+    result = context(knowledge, ticket)
     draft = service.save_draft(ticket["_id"], 1, analysis, "Propuesta revisada por una persona.",
                                rag_context_id=result["context_id"], sources=[citation(result)])
-    service.send_approved(ticket["_id"], draft["draft"]["id"], 1, draft["draft"]["text"])
+    service.send_response(ticket["_id"], draft["draft"]["id"], 1, draft["draft"]["text"])
     assert len(telegram.calls) == 1
     assert "ZENTRA42" not in telegram.calls[0][1]  # Las referencias internas no se añaden al mensaje.
 
@@ -227,7 +227,7 @@ def test_document_upload_validation_replacement_and_search(app, service, knowled
         assert response.status_code == 200 and b"reemplazada" in response.data
 
 
-def test_mcp_passes_bound_context_and_verifies_saved_citations(knowledge, service, ticket, analysis):
+def test_mcp_sends_directly_with_bound_context_and_verified_citations(knowledge, service, ticket, analysis):
     service.knowledge = knowledge
     server = create_mcp(service)
 
@@ -239,14 +239,14 @@ def test_mcp_passes_bound_context_and_verifies_saved_citations(knowledge, servic
             structured = json.loads(structured[0].text)
         retrieved = structured["knowledge_context"]
         assert retrieved["results"][0]["source"] == "condiciones.md"
-        result = await server.call_tool("guardar_borrador", {
+        result = await server.call_tool("responder_cliente", {
             "id_solicitud": ticket["_id"], "revision": 1, "analisis": analysis.model_dump(),
             "respuesta": "Una propuesta para tu negocio.", "rag_context_id": retrieved["context_id"],
             "fuentes": [citation(retrieved).model_dump()],
         })
         assert result
         current = service.repo.get(ticket["_id"])
-        assert current["status"] == "revision"
+        assert current["status"] == "respondida"
         assert current["analysis"]["knowledge"]["citations"][0]["source"] == "condiciones.md"
 
     asyncio.run(exercise())
@@ -263,3 +263,14 @@ def test_oversized_upload_is_rejected_without_changing_index(app, service, knowl
         assert result.status_code == 413
         assert not (knowledge.folder / "large.txt").exists()
     assert knowledge.status()["generation"] == generation
+
+
+def test_retrieval_configuration_changes_invalidate_previous_contexts_without_reembedding(knowledge, ticket):
+    result=context(knowledge,ticket)
+    old_generation=knowledge.status()['generation']
+    changed=KnowledgeBase(knowledge.folder,knowledge.storage,embedder=FakeEmbedder(),reranker=FakeReranker(),min_similarity=.84)
+    assert not changed.status()['ready']
+    status=changed.index()
+    assert status['embedded']==0 and status['generation'] != old_generation
+    with pytest.raises(ValueError):
+        changed.validate_citations(result['context_id'],[citation(result)],ticket_id=ticket['_id'],revision=1)

@@ -2,8 +2,7 @@ def post_payload(client, drafted):
     client.get(f'/solicitudes/{drafted["_id"]}')
     with client.session_transaction() as session:
         csrf = session["csrf"]
-    return {"csrf": csrf, "revision": drafted["revision"], "draft_id": drafted["draft"]["id"],
-            "text": "Respuesta revisada por una persona", "confirm": "si"}
+    return {"csrf": csrf, "revision": drafted["revision"]}
 
 
 def test_all_pages_and_filters_render(app, drafted):
@@ -14,24 +13,20 @@ def test_all_pages_and_filters_render(app, drafted):
         assert client.get("/solicitudes/no-existe").status_code == 404
 
 
-def test_csrf_and_explicit_confirmation_are_required(app, telegram, drafted):
+def test_panel_has_no_approval_flow_or_manual_send_endpoint(app, telegram, drafted):
     with app.test_client() as client:
-        endpoint = f'/solicitudes/{drafted["_id"]}/enviar'
-        assert client.post(endpoint, data={"text": "Hola"}).status_code == 400
+        for path in ['/', '/guia', f'/solicitudes/{drafted["_id"]}']:
+            html = client.get(path).get_data(as_text=True)
+            for obsolete in ['Aprobar y enviar', 'Preparar en Claude', 'Copiar instrucción', 'Revisión humana', 'name="text"']:
+                assert obsolete not in html
         payload = post_payload(client, drafted)
-        payload.pop("confirm")
-        assert client.post(endpoint, data=payload).status_code == 400
+        assert client.post(f'/solicitudes/{drafted["_id"]}/enviar', data=payload).status_code == 404
     assert telegram.calls == []
 
 
-def test_human_can_edit_and_send_once(app, repo, telegram, drafted):
+def test_csrf_is_required_for_remaining_mutations(app, drafted):
     with app.test_client() as client:
-        payload = post_payload(client, drafted)
-        endpoint = f'/solicitudes/{drafted["_id"]}/enviar'
-        assert client.post(endpoint, data=payload).status_code == 302
-        assert client.post(endpoint, data=payload).status_code == 302
-    assert telegram.calls == [(drafted["chat_id"], payload["text"])]
-    assert repo.get(drafted["_id"])["status"] == "respondida"
+        assert client.post(f'/solicitudes/{drafted["_id"]}/cerrar', data={'revision':1}).status_code == 400
 
 
 def test_customer_html_is_escaped(app, repo):
@@ -55,3 +50,26 @@ def test_close_form_rejects_stale_revision(app, repo, drafted):
         repo.receive(drafted["chat_id"], 2, "Lucía", "Un nuevo mensaje")
         client.post(f'/solicitudes/{drafted["_id"]}/cerrar', data=payload)
         assert repo.get(drafted["_id"])["status"] == "pendiente"
+
+
+def test_catalog_displays_sources_and_exact_external_configuration(app):
+    with app.test_client() as client:
+        response=client.get('/catalogo')
+        assert response.status_code == 200
+        html=response.get_data(as_text=True)
+        assert 'Impresshop' in html and 'Gráficos Impresos' in html
+        assert 'no son tarifas propias' in html
+        assert '$999.00' in html and 'MXN más IVA' in html
+        assert 'https://impresshop.mx/promociones/' in html
+
+
+def test_live_panel_state_contains_no_customer_content(app, repo):
+    repo.receive(123,1,'PRIVATE_CUSTOMER_NAME','PRIVATE_CUSTOMER_MESSAGE')
+    with app.test_client() as client:
+        data=client.get('/api/panel')
+        assert data.status_code == 200
+        assert 'PRIVATE_CUSTOMER' not in data.get_data(as_text=True)
+        assert 'chat_id' not in data.get_data(as_text=True)
+        first=data.json['version']
+        repo.receive(123,2,'PRIVATE_CUSTOMER_NAME','Un nuevo mensaje')
+        assert client.get('/api/panel').json['version'] != first

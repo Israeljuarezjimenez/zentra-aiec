@@ -6,34 +6,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0b1019">
-  <title>{% block title %}Solicitudes{% endblock %} · Zentra</title>
+  <title>{% block title %}Solicitudes{% endblock %} · Impresos San Martín</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='zentra-3') }}">
-  <script src="{{ url_for('static', filename='app.js', v='zentra-3') }}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='imprenta-2') }}">
+  <script src="{{ url_for('static', filename='app.js', v='imprenta-2') }}" defer></script>
 </head>
-<body>
+<body data-state-version="{{ state_version }}" data-live="{{ 'true' if not demo and request.endpoint in ['inbox', 'detail'] else 'false' }}">
   <a class="skip-link" href="#main">Ir al contenido</a>
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('inbox') }}"><span class="brand-mark"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8 9h16L8 23h16M13 16h6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Zentra<span class="brand-period">.</span><small>ATENCIÓN CON CLAUDE</small></span></a>
-    <div class="workspace-label"><span class="workspace-avatar">Ó</span><span>Estudio Órbita<small>Agencia de demostración</small></span></div>
+    <a class="brand" href="{{ url_for('inbox') }}"><span class="brand-mark"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8 9h16L8 23h16M13 16h6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Zentra<span class="brand-period">.</span><small>CLAUDE · ENVÍO DIRECTO</small></span></a>
+    <div class="workspace-label"><span class="workspace-avatar">SM</span><span>{{ business.business }}<small>Impresión y diseño</small></span></div>
     <div class="nav-label">TU ESPACIO</div>
     <nav aria-label="Navegación principal">
-      <a class="nav-link {% if request.endpoint in ['inbox', 'detail'] and request.args.get('estado') != 'revision' %}active{% endif %}" href="{{ url_for('inbox') }}">{{ icon('inbox') }} <span>Solicitudes</span><span class="nav-count">{{ counts.pendiente + counts.revision }}</span></a>
-      <a class="nav-link {% if request.endpoint == 'inbox' and request.args.get('estado') == 'revision' %}active{% endif %}" href="{{ url_for('inbox', estado='revision') }}">{{ icon('checks') }} <span>Para revisar</span>{% if counts.revision %}<span class="nav-indicator"></span>{% endif %}</a>
+      <a class="nav-link {% if request.endpoint in ['inbox', 'detail'] %}active{% endif %}" href="{{ url_for('inbox') }}">{{ icon('inbox') }} <span>Solicitudes</span><span class="nav-count">{{ counts.pendiente + counts.revision }}</span></a>
+      <a class="nav-link {% if request.endpoint == 'catalog_page' %}active{% endif %}" href="{{ url_for('catalog_page') }}">{{ icon('book') }} <span>Catálogo</span></a>
       <a class="nav-link {% if request.endpoint in ['knowledge', 'knowledge_upload', 'knowledge_index'] %}active{% endif %}" href="{{ url_for('knowledge') }}">{{ icon('search') }} <span>Conocimiento</span></a>
       <a class="nav-link {% if request.endpoint == 'guide' %}active{% endif %}" href="{{ url_for('guide') }}">{{ icon('book') }} <span>Cómo usarlo</span></a>
     </nav>
-    <div class="sidebar-assistant"><span class="assistant-symbol">{{ icon('spark', 25) }}</span><h2>Buenas conversaciones.<br>Nuevas oportunidades.</h2><p>Claude prepara la respuesta.<br>Tú le das el toque final.</p><a href="{{ url_for('guide') }}">Conoce el flujo {{ icon('arrow', 16) }}</a></div>
+    <div class="sidebar-assistant"><span class="assistant-symbol">{{ icon('spark', 25) }}</span><h2>Buenas conversaciones.<br>Nuevas oportunidades.</h2><p>Información con fuentes.<br>Atención con Claude.</p><a href="{{ url_for('guide') }}">Conoce el flujo {{ icon('arrow', 16) }}</a></div>
     <div class="sidebar-note"><span class="status-light"></span><span>Ejecutándose en tu Mac<small>Zentra · Proyecto AIEC</small></span></div>
   </aside>
   <div class="workspace">
-    <header class="topbar"><div class="breadcrumb">Tu espacio <span>/</span> <strong>{{ 'Cómo usarlo' if request.endpoint == 'guide' else 'Conocimiento' if request.endpoint == 'knowledge' else 'Solicitudes' }}</strong></div><div class="topbar-right"><span class="mode-pill">{{ icon('shield', 14) }} {{ 'Demo local' if demo else 'Revisión humana' }}</span><span class="operator-avatar" aria-label="Espacio Zentra">Z</span></div></header>
+    <header class="topbar"><div class="breadcrumb">Tu espacio <span>/</span> <strong>{{ 'Cómo usarlo' if request.endpoint == 'guide' else 'Catálogo' if request.endpoint == 'catalog_page' else 'Conocimiento' if request.endpoint == 'knowledge' else 'Solicitudes' }}</strong></div><div class="topbar-right"><span class="mode-pill">{{ icon('shield', 14) }} {{ 'Demo local' if demo else 'Claude API' if automatic_enabled else 'Claude Desktop · envío directo' }}</span><span class="operator-avatar" aria-label="Espacio Zentra">Z</span></div></header>
     <main id="main">
-      {% if demo %}<div class="demo-banner">{{ icon('info', 18) }} <p><strong>Estás explorando una demo.</strong> Datos y borrador ficticios; sin conexión a Claude, Telegram ni Atlas. El envío está desactivado.</p></div>{% endif %}
+      {% if demo %}<div class="demo-banner">{{ icon('info', 18) }} <p><strong>Estás explorando una demo.</strong> Conversaciones ficticias. No se envían mensajes reales desde esta demo.</p></div>{% endif %}
       {% for category, message in get_flashed_messages(with_categories=true) %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
       {% block content %}{% endblock %}
     </main>
-    <footer><span>Hecho para conversar mejor.</span><span>Hora de Ciudad de México <span class="footer-dot">·</span> Panel local</span></footer>
+    <footer><span data-live-status>Hecho para conversar mejor.</span><span>Hora de Ciudad de México <span class="footer-dot">·</span> Panel local</span></footer>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </body>

@@ -1,11 +1,18 @@
-"""Evaluación reproducible con documentos ficticios, separada del negocio real."""
+"""Banco congelado de recuperación de imprenta, separado del índice de trabajo."""
 import json
+import re
+import unicodedata
 from pathlib import Path
 from statistics import median
 from tempfile import TemporaryDirectory
 from time import perf_counter
 
 from .rag import KnowledgeBase
+
+
+def evidence_text(text):
+    plain = ''.join(c for c in unicodedata.normalize('NFD', text.casefold()) if not unicodedata.combining(c))
+    return re.sub(r'(?<=\d),(?=\d)', '', plain)
 
 
 def evaluate(embedder, reranker):
@@ -30,7 +37,11 @@ def evaluate(embedder, reranker):
             sources = [r["source"] for r in result["results"]]
             expected = case["expected"]
             if expected:
-                rank = next((i for i, source in enumerate(sources, 1) if source == expected), None)
+                expected_sources = {expected} if isinstance(expected, str) else set(expected)
+                terms = [evidence_text(term) for term in case.get('required_terms', [])]
+                rank = next((i for i, hit in enumerate(result['results'], 1)
+                             if hit['source'] in expected_sources
+                             and all(term in evidence_text(hit['text']) for term in terms)), None)
                 hits += rank is not None
                 first += rank == 1
                 reciprocal += 1 / rank if rank else 0
@@ -46,6 +57,6 @@ def evaluate(embedder, reranker):
                    "irrelevant_rejection": round(rejected / negatives, 4),
                    "median_query_ms": round(median(timings), 1)}
         return {"passed": hits / positives >= .95 and rejected == negatives and first / positives >= .85,
-                "scope": "Recuperación con modelo local real; documentos ficticios. No evalúa las respuestas generadas por Claude.",
+                "scope": fixture['notice'],
                 "model": kb.status()["pipeline"], "min_similarity": kb.min_similarity, "min_relevance": kb.min_relevance,
                 "metrics": metrics, "failures": [row for row in rows if not row["passed"]], "details": rows}

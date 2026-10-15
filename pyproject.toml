@@ -1,7 +1,7 @@
 [project]
 name = "aiec"
 version = "0.1.0"
-description = "Atención asistida con Telegram, MongoDB y Claude Desktop mediante MCP."
+description = "Atención de imprenta con Telegram, MongoDB, RAG y Claude."
 requires-python = ">=3.12"
 dependencies = [
   "fastembed>=0.7,<1",

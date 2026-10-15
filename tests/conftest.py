@@ -38,21 +38,21 @@ def service(repo, telegram):
 
 @pytest.fixture
 def analysis():
-    return Analysis(service="publicidad_redes", summary="Pide publicidad y declara un presupuesto.",
+    return Analysis(service="offset", summary="Pide impresión y declara un presupuesto.",
                     priority="media", priority_reason="No indicó una fecha de inicio.",
-                    budget="$15,000 mensuales", evidence=["Quiero publicidad"],
+                    budget="$15,000 para el pedido", evidence=["Quiero volantes"],
                     missing_data=["fecha de inicio"])
 
 
 @pytest.fixture
 def ticket(repo):
-    ticket_id, _ = repo.receive(8000000000001, 1, "Lucía", "Quiero publicidad. Tengo $15,000 mensuales.")
+    ticket_id, _ = repo.receive(8000000000001, 1, "Lucía", "Quiero volantes. Tengo $15,000 para el pedido.")
     return repo.get(ticket_id)
 
 
 @pytest.fixture
 def drafted(service, ticket, analysis):
-    return service.save_draft(ticket["_id"], ticket["revision"], analysis, "¿Cuándo te gustaría comenzar?")
+    return service.save_draft(ticket["_id"], ticket["revision"], analysis, "Podemos orientar tu impresión con las opciones documentadas.")
 
 
 @pytest.fixture

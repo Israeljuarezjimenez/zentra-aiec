@@ -12,7 +12,7 @@ MODEL_KEY = f"{MODEL}@{REVISION}/{MODEL_FILE}:chunks-v1"
 RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 RERANK_REVISION = "1427fd652930e4ba29e8149678df786c240d8825"
 RERANK_FILE = "onnx/model_qint8_arm64.onnx"
-PIPELINE_KEY = MODEL_KEY + f":{RERANK_MODEL}@{RERANK_REVISION}/{RERANK_FILE}:rrf-v3"
+PIPELINE_KEY = MODEL_KEY + f":{RERANK_MODEL}@{RERANK_REVISION}/{RERANK_FILE}:rrf-v4"
 
 
 def model_snapshot(repo, revision, model_file, cache, download):
