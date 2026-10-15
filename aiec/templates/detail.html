@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ ticket.name }}{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url_for('inbox') }}">← Volver a solicitudes</a>
+<div class="page-heading detail-heading"><div><p class="eyebrow">SOLICITUD {{ ticket._id[:8] | upper }}</p><h1>{{ ticket.name }}</h1><p class="subtitle">Actualizada {{ ticket.updated_at | localdate }} · <span class="badge {{ ticket.status }}">{{ statuses[ticket.status] }}</span></p></div><a class="button secondary" href="{{ url_for('detail', ticket_id=ticket._id) }}">↻ Actualizar</a></div>
+{% if knowledge_warning %}<div class="notice error" role="status">{{ knowledge_warning }} Usa “Actualizar borrador con Claude” debajo del editor.</div>{% endif %}
+{% if ticket.delivery_state in ['enviando', 'incierto'] %}
+<section class="notice error"><h2>Hay un envío sin confirmar</h2><p>La respuesta podría haberse entregado. No la reenvíes sin verificar con el destinatario. Si el programa acaba de enviarla, espera unos segundos y actualiza esta página.</p>
+<details><summary>Ya verifiqué el resultado</summary><form method="post" action="{{ url_for('resolve', ticket_id=ticket._id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="attempt_id" value="{{ ticket.attempt.id }}"><label><input type="radio" name="resolution" value="enviado" required> Confirmé que sí se entregó.</label><label><input type="radio" name="resolution" value="no_enviado" required> Confirmé que no se entregó.</label><label><input type="checkbox" name="confirm" value="si" required> Verifiqué este intento y no hay un envío en curso.</label><button class="button secondary" type="submit">Registrar verificación</button></form></details></section>
+{% endif %}
+<div class="detail-grid">
+<section class="card conversation"><div class="section-heading"><div><h2>Conversación</h2><p>Hasta los últimos 100 mensajes guardados.</p></div><span class="subtle-tag">Telegram</span></div><div class="messages">
+{% for message in ticket.messages %}<article class="message {{ message.role }}"><div class="message-label">{{ ticket.name if message.role == 'cliente' else 'Agencia · respuesta aprobada' }}<time>{{ message.created_at | localdate }}</time></div><p>{{ message.text }}</p></article>{% endfor %}
+</div></section>
+<div class="review-column">
+<section class="card analysis"><div class="section-heading"><div><p class="eyebrow">{{ 'EJEMPLO ILUSTRATIVO' if demo else 'PROPUESTA DE CLAUDE' }}</p><h2>Análisis de la solicitud</h2></div></div>
+{% if ticket.analysis %}
+<p class="analysis-summary">{{ ticket.analysis.summary }}</p><dl class="facts"><div><dt>Servicio</dt><dd>{{ service_names.get(ticket.analysis.service, 'Por definir') }}</dd></div><div><dt>Presupuesto del cliente</dt><dd>{{ ticket.analysis.budget or 'No especificado' }}</dd></div><div><dt>Prioridad propuesta</dt><dd><span class="priority {{ ticket.analysis.priority }}">{{ priorities[ticket.analysis.priority] }}</span></dd></div></dl>
+<p class="small-text">{{ ticket.analysis.priority_reason }}</p><div class="evidence"><strong>Lo que dijo el cliente</strong>{% for quote in ticket.analysis.evidence %}<blockquote>“{{ quote }}”</blockquote>{% endfor %}</div>
+{% if ticket.analysis.missing_data %}<p class="label">Datos por confirmar</p><ul class="missing-data">{% for item in ticket.analysis.missing_data %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+{% if ticket.analysis.knowledge %}<div class="knowledge-evidence"><p class="label">Fuentes que respaldan el borrador</p>{% for source in ticket.analysis.knowledge.citations %}<article><strong>{{ source.title }}</strong><small>{{ source.source }}{% if source.page %} · pág. {{ source.page }}{% endif %} · versión {{ source.version[:8] }}</small><blockquote>“{{ source.quote }}”</blockquote></article>{% else %}<p class="small-text">No se encontró evidencia documental suficiente. Revisa los datos que faltan antes de aprobar.</p>{% endfor %}</div>{% elif not demo %}<p class="small-text knowledge-space">Este borrador todavía no tiene fuentes RAG verificadas. Pide a Claude una nueva versión para incorporarlas.</p>{% endif %}
+{% else %}<p class="muted">Claude todavía no ha preparado un análisis. Abre Claude Desktop y pídele que revise esta solicitud.</p>{% endif %}
+</section>
+<section class="card response-card"><div class="section-heading"><div><h2>Respuesta para revisar</h2><p>{{ 'Texto ficticio para explorar el panel.' if demo else 'Puedes corregir el texto antes de enviarlo.' }}</p></div></div>
+{% if ticket.draft %}
+<form method="post" action="{{ url_for('send', ticket_id=ticket._id) }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="revision" value="{{ ticket.revision }}"><input type="hidden" name="draft_id" value="{{ ticket.draft.id }}">
+  <label class="label" for="response">Mensaje para {{ ticket.name }}</label><textarea id="response" name="text" rows="8" maxlength="4000" required>{{ ticket.draft.text }}</textarea>
+  {% if demo %}<p class="small-text">Envío desactivado en la demo.</p>{% else %}<label class="confirmation"><input type="checkbox" name="confirm" value="si" required> Revisé el texto y confirmo el destinatario.</label>{% endif %}
+  <button class="button primary full" type="submit" {% if demo or knowledge_warning or ticket.delivery_state in ['enviando', 'incierto'] %}disabled{% endif %}>Aprobar y enviar por Telegram <span aria-hidden="true">↗</span></button>
+</form>
+{% if not demo %}<details class="draft-retry"><summary>Actualizar borrador con Claude</summary><p class="copy-source" id="claude-retry-prompt">{{ ticket_prompt(ticket._id) }}</p><button type="button" class="button secondary" data-copy="claude-retry-prompt">Copiar instrucción actualizada</button></details>{% endif %}
+{% else %}
+<div class="draft-empty"><span aria-hidden="true">✦</span><p>El siguiente paso está en Claude.</p><p class="small-text">Copia esta instrucción y pégala en Claude Desktop con las herramientas AIEC conectadas.</p>
+<p class="copy-source" id="claude-prompt">{{ ticket_prompt(ticket._id) if ticket_prompt is defined else "Consulta el catálogo de AIEC y la solicitud " ~ ticket._id ~ ". Guarda un borrador propositivo, sin preguntas al cliente. Usa MXN por defecto salvo otra moneda explícita; si pide de todo, ofrece opciones y recomienda un enfoque inicial. Anota los datos faltantes internamente. Usa la revisión actual y citas exactas como evidencia. No inventes precios ni fechas confirmadas. No envíes mensajes." }}</p><button type="button" class="button secondary" data-copy="claude-prompt">Copiar instrucción</button></div>
+{% endif %}
+</section>
+{% if ticket.status != 'cerrada' and ticket.delivery_state not in ['enviando', 'incierto'] %}<form method="post" action="{{ url_for('close', ticket_id=ticket._id) }}" class="close-form"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="revision" value="{{ ticket.revision }}"><button type="submit" class="text-button">Cerrar solicitud</button><span>Un nuevo mensaje la volverá a abrir.</span></form>{% endif %}
+</div></div>
+{% endblock %}
