@@ -41,6 +41,17 @@ Para ejecutar los pasos por separado:
 
 Crear el túnel por sí solo no configura Meta ni habilita una recepción sin secreto. `whatsapp-connect` valida antes de registrar y solo declara éxito después de comprobar ambas suscripciones. Si otro programa ocupa el puerto, no lo detiene. Los registros y metadatos del túnel quedan en `.runtime/whatsapp/` con permisos privados.
 
+## Renovar un token temporal
+
+Si Meta devuelve el código 190 y subcódigo 463, el token está caducado. Genera otro en WhatsApp → Pruebas de API de la misma aplicación y abre **`Renovar WhatsApp.command`**. Solicita el token nuevo de forma oculta y conserva los identificadores y el secreto ya guardados; si falta el secreto, también lo pide. Valida los datos antes de registrar y no activa la API de Claude.
+
+```bash
+.venv/bin/python -m aiec configure-whatsapp --renew-token
+.venv/bin/python -m aiec whatsapp-connect
+```
+
+El token y el secreto deben pertenecer a la misma aplicación. Crear otra aplicación es una alternativa; en ese caso también deben configurarse su acceso al número, token, secreto y suscripciones correspondientes. Para recuperar una sesión temporal caducada puedes conservar la aplicación existente. El configurador evita que una ventana antigua sobrescriba cambios más recientes en `.env`.
+
 ## Dirección estable y configuración manual
 
 Para una instalación pública utiliza una dirección HTTPS estable hacia el puerto del receptor. En Meta configura la devolución terminada en `/webhook/whatsapp`, verifica con el token de la ficha privada y suscribe `messages` y la aplicación a la cuenta de WhatsApp. **El puerto 5050 del panel no se publica.** Un número comercial y las condiciones de producción deben completarse antes de abrir la atención al público.

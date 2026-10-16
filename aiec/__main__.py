@@ -51,7 +51,10 @@ def main(argv=None):
     parser.add_argument("query", nargs="?", help="Texto de búsqueda para rag-search.")
     parser.add_argument("--demo", action="store_true", help="Conversaciones de ejemplo en memoria; no envía mensajes.")
     parser.add_argument('--since', help='Inicio de la imprenta en ISO 8601 con zona horaria; solo para migrar historial.')
+    parser.add_argument('--renew-token', action='store_true', help='Solicita un token nuevo en el configurador privado de WhatsApp.')
     args = parser.parse_args(argv)
+    if args.renew_token and args.command != 'configure-whatsapp':
+        parser.error('--renew-token se utiliza con configure-whatsapp.')
     configure_logs()
     if args.command == "setup":
         setup()
@@ -62,7 +65,7 @@ def main(argv=None):
     if args.command == 'configure-whatsapp':
         from .whatsapp_setup import configure
         try:
-            configure(ROOT / '.env')
+            configure(ROOT / '.env', renew_token=args.renew_token)
             return 0
         except (ValueError, OSError):
             print('No se guardó una configuración válida de WhatsApp. Revisa los datos introducidos.',file=sys.stderr)

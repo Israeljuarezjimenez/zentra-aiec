@@ -4,7 +4,7 @@ Validación de WhatsApp actualizada el 16 de octubre de 2026; las comprobaciones
 
 | Área | Resultado observado |
 | --- | --- |
-| Pruebas automatizadas | 155 pruebas aprobadas. |
+| Pruebas automatizadas | 158 pruebas aprobadas. |
 | Protocolo MCP | Comunicación real por stdio: consultar solicitud, recuperar fuentes, responder y obtener comprobante. Telegram simulado. |
 | Envío directo | Sin aprobación en el panel. Una llamada repetida devuelve el comprobante sin repetir la entrega. |
 | Contexto de negocio | Mensajes con identidad de negocio; historial anterior archivado y excluido de Claude, RAG, evidencias y presupuestos. Migración con respaldo privado y control de concurrencia. El archivo se conserva aunque el historial activo alcance su límite de 100 mensajes. |
@@ -17,6 +17,7 @@ Validación de WhatsApp actualizada el 16 de octubre de 2026; las comprobaciones
 | Diseño adaptable | Sin desbordamiento horizontal en 320, 390, 768, 1024 y 1440 píxeles. |
 | WhatsApp | 33 comprobaciones de recepción, configuración, aislamiento, destinatarios, deduplicación y estados; transporte de envíos simulado. Acceso real a Meta verificado sin mensajes. |
 | Conexión de la demo | 16 pruebas adicionales de registro, reinicio seguro, túnel, metadatos privados y recarga del canal MCP. Registro de Meta simulado. Transporte HTTPS real comprobado sin publicar el panel. El secreto de aplicación continúa pendiente; no se afirma registro real ni recepción de clientes. |
+| Renovación de credenciales | Tres pruebas adicionales: sustitución oculta del token, conservación ante entradas inválidas y protección frente a cambios de archivo concurrentes. Meta confirmó caducidad del token temporal con HTTP 401, código 190 y subcódigo 463; el acceso requiere renovación. |
 | Catálogo | 8 documentos públicos, catálogo estructurado y 19 variantes de precio de terceros. |
 | Privacidad | Credenciales, conversaciones, documentos de trabajo, bases, modelos y registros excluidos de Git. |
 

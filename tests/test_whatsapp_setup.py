@@ -32,6 +32,47 @@ def test_invalid_configuration_does_not_replace_any_saved_credentials(tmp_path):
     assert env.read_text()==before
 
 
+def test_renewing_an_expired_token_preserves_other_credentials_and_hides_input(tmp_path,capsys):
+    env=tmp_path/'.env'
+    env.write_text('WHATSAPP_ACCESS_TOKEN=old-private-token\nWHATSAPP_PHONE_NUMBER_ID=111222333444\n'
+        'WHATSAPP_BUSINESS_ACCOUNT_ID=555666777888\nWHATSAPP_APP_SECRET=existing-private-app-secret\n'
+        'WHATSAPP_VERIFY_TOKEN=existing-private-verification-token\nAUTO_REPLY_ENABLED=false\n')
+    prompts=[]
+    def secret(label):
+        prompts.append(label)
+        return 'new-private-access-token'
+    def unexpected(_label):pytest.fail('No volver a pedir los identificadores guardados.')
+    configure(env,ask=unexpected,ask_secret=secret,renew_token=True)
+    values=dotenv_values(env)
+    assert len(prompts)==1 and 'Token de acceso' in prompts[0]
+    assert values['WHATSAPP_ACCESS_TOKEN']=='new-private-access-token'
+    assert values['WHATSAPP_APP_SECRET']=='existing-private-app-secret'
+    assert values['WHATSAPP_VERIFY_TOKEN']=='existing-private-verification-token'
+    assert values['AUTO_REPLY_ENABLED']=='false'
+    assert 'new-private-access-token' not in capsys.readouterr().out
+
+
+def test_invalid_renewal_keeps_the_saved_configuration_intact(tmp_path):
+    env=tmp_path/'.env';before='WHATSAPP_ACCESS_TOKEN=old-private-token\n'
+    env.write_text(before)
+    with pytest.raises(ValueError):
+        configure(env,ask_secret=lambda _label:'',renew_token=True)
+    assert env.read_text()==before
+
+
+def test_a_slow_configurator_never_overwrites_more_recent_file_changes(tmp_path):
+    env=tmp_path/'.env'
+    env.write_text('WHATSAPP_ACCESS_TOKEN=existing-private-token\nWHATSAPP_PHONE_NUMBER_ID=111222333444\n'
+        'WHATSAPP_BUSINESS_ACCOUNT_ID=555666777888\n')
+    replacement=env.read_text()+'MONGODB_DATABASE=more_recent_database\n'
+    def secret(_label):
+        env.write_text(replacement)
+        return 'private-app-secret-new'
+    with pytest.raises(ValueError,match='configuración cambió'):
+        configure(env,ask_secret=secret)
+    assert env.read_text()==replacement
+
+
 def test_mcp_loads_a_newly_enabled_channel_without_restarting_claude(service,monkeypatch):
     from dataclasses import replace
     from aiec.config import Settings
