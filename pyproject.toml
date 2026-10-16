@@ -1,7 +1,7 @@
 [project]
 name = "aiec"
 version = "0.1.0"
-description = "Atención de imprenta con Telegram, MongoDB, RAG y Claude."
+description = "Atención de imprenta con WhatsApp, Telegram, MongoDB, RAG y Claude."
 requires-python = ">=3.12"
 dependencies = [
   "fastembed>=0.7,<1",
@@ -24,3 +24,5 @@ dev = ["pytest>=8,<10", "mongomock>=4.3,<5"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# La advertencia pertenece al reloj UTC de mongomock al comprobar los índices TTL.
+filterwarnings = ['ignore:datetime.datetime.utcnow\(\) is deprecated.*:DeprecationWarning:mongomock.helpers']

@@ -45,9 +45,9 @@ def configure_logs():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Impresos San Martín · Telegram, RAG y Claude.")
+    parser = argparse.ArgumentParser(description="Impresos San Martín · WhatsApp, Telegram, RAG y Claude.")
     parser.add_argument("command", choices=["setup", "doctor", "run", "demo", "mcp", "claude-config", 'migrate-business', 'sync-telegram-profile',
-                                            "load-examples", "rag-index", "rag-search", "rag-status", "rag-eval"])
+                                            "load-examples", "rag-index", "rag-search", "rag-status", "rag-eval", 'whatsapp-check','configure-whatsapp'])
     parser.add_argument("query", nargs="?", help="Texto de búsqueda para rag-search.")
     parser.add_argument("--demo", action="store_true", help="Conversaciones de ejemplo en memoria; no envía mensajes.")
     parser.add_argument('--since', help='Inicio de la imprenta en ISO 8601 con zona horaria; solo para migrar historial.')
@@ -59,6 +59,14 @@ def main(argv=None):
     if args.command == "claude-config":
         print(json.dumps(claude_config(), ensure_ascii=False, indent=2))
         return 0
+    if args.command == 'configure-whatsapp':
+        from .whatsapp_setup import configure
+        try:
+            configure(ROOT / '.env')
+            return 0
+        except (ValueError, OSError):
+            print('No se guardó una configuración válida de WhatsApp. Revisa los datos introducidos.',file=sys.stderr)
+            return 1
 
     from .bot import check_bot
     from .repository import Repository
@@ -110,13 +118,37 @@ def main(argv=None):
             from .demo import demo_service
             service = demo_service()
         else:
-            settings.validate(telegram=args.command in ("run", "doctor", "mcp", 'sync-telegram-profile'), web=args.command == "run")
+            needs_telegram = args.command == 'sync-telegram-profile' or (
+                settings.telegram_enabled and args.command in ('run','doctor','mcp'))
+            settings.validate(telegram=needs_telegram, web=args.command == "run")
+            whatsapp = None
+            if settings.whatsapp_enabled or args.command == 'whatsapp-check':
+                from .whatsapp import WhatsApp
+                settings.validate_whatsapp(webhook=settings.whatsapp_enabled and args.command == 'run')
+                whatsapp = WhatsApp(settings.whatsapp_access_token, settings.whatsapp_phone_number_id,
+                    graph_version=settings.whatsapp_graph_version)
             repo = Repository.connect(settings)
-            service = Service(repo, Telegram(settings.bot_token) if args.command in ("run", "doctor", "mcp", 'sync-telegram-profile') else None,
-                              knowledge=KnowledgeBase())
+            service = Service(repo, Telegram(settings.bot_token) if needs_telegram else None,
+                              knowledge=KnowledgeBase(), whatsapp=whatsapp, settings=settings)
             if args.command == "run":
                 from .responses import configured_responder
                 service.responder = configured_responder(settings)
+
+        if args.command == 'whatsapp-check':
+            try:
+                number = service.whatsapp.check(settings.whatsapp_business_account_id)
+                from .repository import now
+                service.repo.state.update_one({'_id':'whatsapp_config'}, {'$set':{
+                    'credentials_checked_at':now(), 'credentials_valid':True,
+                    'number_name':number.get('verified_name',''),
+                }}, upsert=True)
+                print('✓ Token de Meta válido; número vinculado a la cuenta de WhatsApp configurada.')
+                print('✓ Comprobación de solo lectura: no se enviaron mensajes.')
+                print('Webhook: listo para configurar.' if settings.whatsapp_app_secret else
+                      'Webhook pendiente: guarda WHATSAPP_APP_SECRET en .env y configura la dirección HTTPS en Meta.')
+                return 0
+            finally:
+                repo.database.client.close()
 
         if args.command == 'sync-telegram-profile':
             from .telegram_profile import sync_telegram_profile
@@ -128,8 +160,12 @@ def main(argv=None):
 
         if args.command == "doctor":
             print("✓ Conexión con MongoDB e índices disponibles.")
-            me = check_bot(service.telegram)
-            print(f"✓ Bot de Telegram válido: @{me['username']}.")
+            if service.telegram is not None:
+                me = check_bot(service.telegram)
+                print(f"✓ Bot de Telegram válido: @{me['username']}.")
+            if service.whatsapp is not None:
+                service.whatsapp.check(settings.whatsapp_business_account_id)
+                print('✓ Conexión de WhatsApp válida.')
             state = service.knowledge.status()
             print("Claude automático: configurado; sin probar consumo de API." if settings.auto_reply_enabled and settings.anthropic_api_key else
                   "✓ Envío directo desde Claude Desktop por MCP, sin API de pago. Generación en segundo plano: desactivada.")
@@ -156,9 +192,9 @@ def main(argv=None):
     except PyMongoError:
         print("No pudimos conectar con MongoDB. Revisa la conexión, usuario, contraseña y Network Access de Atlas. No se muestran credenciales.", file=sys.stderr)
     except TelegramRejected as error:
-        print(f"Telegram rechazó la conexión (código {error.code}). Revisa el token y que no haya otro programa usando el bot.", file=sys.stderr)
+        print(str(error)+' Revisa la configuración del canal.', file=sys.stderr)
     except DeliveryUncertain:
-        print("No pudimos confirmar la conexión con Telegram. Revisa tu conexión a internet.", file=sys.stderr)
+        print("No pudimos confirmar la conexión del canal. Revisa tu conexión a internet.", file=sys.stderr)
     except ValueError as error:
         print(str(error), file=sys.stderr)
     except OSError:

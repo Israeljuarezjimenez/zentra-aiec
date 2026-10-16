@@ -181,6 +181,16 @@ def test_long_chunks_preserve_tail_and_overlap_without_model_truncation():
     assert chunks[-1]["text"].endswith("palabra779")
 
 
+def test_markdown_sections_keep_unrelated_business_rules_in_separate_chunks():
+    text = '# Preparar un pedido\n\nVerificar medidas y material.\n\n## Presupuesto\n\nEl presupuesto de otro pedido no se traslada.\n\n## Entrega\n\nAceptar un mensaje no confirma producción.'
+    doc = Document('solicitud.md', 'Solicitud', ((None, text),), 'version')
+    chunks = chunk_document(doc, FakeEmbedder().offsets)
+    assert len(chunks) == 3
+    budget = next(c for c in chunks if 'no se traslada' in c['text'])
+    assert budget['text'].startswith('## Presupuesto')
+    assert 'Verificar medidas' not in budget['text'] and 'producción' not in budget['text']
+
+
 def test_pdf_preserves_page_and_rejects_scans(tmp_path):
     writer = PdfWriter()
     for text in ["Primera pagina", "Segunda pagina"]:

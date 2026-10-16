@@ -87,7 +87,7 @@ class ClaudeResponder:
             response = self.client.post('https://api.anthropic.com/v1/messages', json=payload,
                 headers={'x-api-key': self._key, 'anthropic-version': '2023-06-01'})
         except httpx.TransportError:
-            raise ValueError('No se confirmó la respuesta de Claude. No se envió ningún mensaje a Telegram.') from None
+            raise ValueError('No se confirmó la respuesta de Claude. No se envió ningún mensaje al cliente.') from None
         if response.status_code != 200:
             raise ValueError(f'Claude rechazó la solicitud (HTTP {response.status_code}). Revisa la clave, créditos y modelo.')
         try:

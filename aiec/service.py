@@ -33,12 +33,15 @@ def validate_text(text):
 
 
 class Service:
-    def __init__(self, repository: Repository, telegram: Telegram | None = None, *, demo=False, knowledge=None, responder=None):
+    def __init__(self, repository: Repository, telegram: Telegram | None = None, *, demo=False, knowledge=None, responder=None,
+                 whatsapp=None, settings=None):
         self.repo = repository
         self.telegram = telegram
         self.demo = demo
         self.knowledge = knowledge
         self.responder = responder
+        self.whatsapp = whatsapp
+        self.settings = settings
 
     def system_status(self):
         desktop = self.repo.state.find_one({'_id': 'claude_desktop'}) or {}
@@ -50,7 +53,9 @@ class Service:
         knowledge = self.knowledge.status() if self.knowledge is not None else None
         return {'mode': 'demo' if self.demo else 'claude_api' if self.responder else 'claude_desktop',
                 'business': commercial_status(),
-                'delivery_ready': not self.demo and self.telegram is not None,
+                'delivery_ready': not self.demo and (self.telegram is not None or self.whatsapp is not None),
+                'channels': {'telegram':self.telegram is not None, 'whatsapp':self.whatsapp is not None},
+                'attention_mode':'continua' if self.responder else 'asistida',
                 'receiver': receiver_status,
                 'claude_last_seen': desktop['last_seen_at'].isoformat() if desktop.get('last_seen_at') else None,
                 'claude_last_tool': desktop.get('last_tool'),
@@ -58,6 +63,20 @@ class Service:
                 'knowledge': {'ready': knowledge['ready'], 'stale': knowledge['stale'],
                               'documents': len(knowledge['documents']), 'chunks': knowledge['chunks'],
                               'generation': knowledge['generation']} if knowledge else None}
+
+    def whatsapp_setup(self):
+        settings = self.settings
+        checked = self.repo.state.find_one({'_id':'whatsapp_config'}) or {}
+        return {
+            'enabled':bool(settings and settings.whatsapp_enabled),
+            'credentials_saved':bool(settings and settings.whatsapp_access_token and settings.whatsapp_phone_number_id),
+            'signature_ready':bool(settings and settings.whatsapp_app_secret),
+            'verification_ready':bool(settings and settings.whatsapp_verify_token),
+            'checked_at':checked.get('credentials_checked_at'),
+            'credentials_valid':checked.get('credentials_valid',False),
+            'number_name':checked.get('number_name',''),
+            'webhook_port':settings.whatsapp_webhook_port if settings else 5051,
+        }
 
     def panel_state(self):
         status = self.system_status()
@@ -127,8 +146,8 @@ class Service:
         """Validar y enviar en una llamada. Una revisión solo puede recibir una respuesta."""
         if self.demo:
             raise ValueError('La demo no envía mensajes reales. El envío directo funciona con tu bot conectado.')
-        if not self.telegram:
-            raise ValueError('Falta conectar Telegram para enviar la respuesta de Claude.')
+        if not self.telegram and not self.whatsapp:
+            raise ValueError('Falta conectar un canal para enviar la respuesta de Claude.')
         text = validate_text(text)
         previous = self._delivery_receipt(ticket_id, revision, text)
         if previous:
@@ -142,8 +161,14 @@ class Service:
             if previous:
                 return {**previous, 'already_sent': True}
             raise
-        return {'id': ticket_id, 'revision': revision, 'status': 'respondida', 'sent': True,
-                'delivery_state': 'enviado', 'telegram_message_id': result['message_id'], 'already_sent': False,
+        channel = self.repo.get(ticket_id).get('channel', 'telegram')
+        receipt = {'provider_message_id':result['message_id'], 'channel':channel}
+        if channel == 'telegram':
+            receipt['telegram_message_id'] = result['message_id']
+        else:
+            receipt['provider_delivery_status'] = (self.repo.get(ticket_id).get('attempt') or {}).get('provider_delivery_status','accepted')
+        return {'id': ticket_id, 'revision': revision, 'status': 'respondida', 'sent': True, **receipt,
+                'delivery_state': 'enviado', 'already_sent': False,
                 'message': 'Respuesta enviada directamente al cliente y registrada en el historial.'}
 
     def _delivery_receipt(self, ticket_id, revision, text):
@@ -156,30 +181,44 @@ class Service:
         if current['delivery_state'] == 'enviado' and attempt.get('revision') == revision:
             if attempt.get('text') != text:
                 raise ConflictError('Esta revisión ya tiene una respuesta enviada. No se enviará otra diferente.')
-            return {'id': ticket_id, 'revision': revision, 'status': current['status'], 'sent': True,
-                    'delivery_state': 'enviado', 'telegram_message_id': attempt.get('telegram_message_id'),
+            channel = current.get('channel', 'telegram')
+            receipt = {'channel':channel, 'provider_message_id':attempt.get('provider_message_id', attempt.get('telegram_message_id'))}
+            if channel == 'telegram':
+                receipt['telegram_message_id'] = attempt.get('telegram_message_id')
+            else:
+                receipt['provider_delivery_status'] = attempt.get('provider_delivery_status','accepted')
+            return {'id': ticket_id, 'revision': revision, 'status': current['status'], 'sent': True, **receipt,
+                    'delivery_state': 'enviado',
                     'message': 'Respuesta enviada directamente al cliente y registrada en el historial.'}
         return None
 
     def send_response(self, ticket_id, draft_id, revision, text, *, origin='claude_desktop'):
         if self.demo:
-            raise ValueError("La demo no envía mensajes reales. Conecta Telegram y MongoDB para usar el envío.")
-        if not self.telegram:
-            raise ValueError("Falta configurar el bot de Telegram.")
+            raise ValueError("La demo no envía mensajes reales. Conecta un canal y MongoDB para usar el envío.")
         text = validate_text(text)
         current = self.repo.get(ticket_id)
+        channel = current.get('channel', 'telegram')
+        if not (self.whatsapp if channel == 'whatsapp' else self.telegram):
+            raise ValueError('El canal de esta conversación no está conectado. No se cambió de destinatario.')
         if self.knowledge is not None:
             self.knowledge.check_draft((current.get("analysis") or {}).get("knowledge"))
         ticket = self.repo.begin_send(ticket_id, draft_id, revision, text,
                                       analysis=current.get('analysis'), origin=origin)
         attempt_id = ticket["attempt"]["id"]
         try:
-            result = self.telegram.send_message(ticket["chat_id"], text)
+            if channel == 'whatsapp':
+                result = self.whatsapp.send_message(ticket['recipient_id'], text,
+                    last_customer_at=ticket['last_customer_at'])
+            else:
+                result = self.telegram.send_message(ticket["chat_id"], text)
         except TelegramRejected:
             self.repo.send_failed(ticket_id, attempt_id, uncertain=False)
             raise
         except DeliveryUncertain:
             self.repo.send_failed(ticket_id, attempt_id, uncertain=True)
+            raise
+        except ValueError:
+            self.repo.send_failed(ticket_id, attempt_id, uncertain=False)
             raise
         # Si Mongo falla aquí, queda bloqueado como 'enviando' para evitar duplicados.
         self.repo.finish_send(ticket_id, attempt_id, result["message_id"])
@@ -194,6 +233,8 @@ def public_ticket(ticket, *, full=False):
         "updated_at": ticket["updated_at"].isoformat(),
         'business_id': ticket.get('business_id'),
         'archived_message_count': ticket.get('archived_message_count', 0),
+        'channel':ticket.get('channel', 'telegram'),
+        'provider_delivery_status':(ticket.get('attempt') or {}).get('provider_delivery_status'),
     }
     messages = current_messages(ticket)[-20:] if full else current_messages(ticket)[-1:]
     result["messages"] = [{"role": m["role"], "text": m["text"],

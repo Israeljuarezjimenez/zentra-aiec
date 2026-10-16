@@ -8,11 +8,11 @@ import numpy as np
 MODEL = "intfloat/multilingual-e5-small"
 REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
 MODEL_FILE = "onnx/model_qint8_avx512_vnni.onnx"
-MODEL_KEY = f"{MODEL}@{REVISION}/{MODEL_FILE}:chunks-v1"
+MODEL_KEY = f"{MODEL}@{REVISION}/{MODEL_FILE}:chunks-v2:single-passage"
 RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 RERANK_REVISION = "1427fd652930e4ba29e8149678df786c240d8825"
 RERANK_FILE = "onnx/model_qint8_arm64.onnx"
-PIPELINE_KEY = MODEL_KEY + f":{RERANK_MODEL}@{RERANK_REVISION}/{RERANK_FILE}:rrf-v4"
+PIPELINE_KEY = MODEL_KEY + f":{RERANK_MODEL}@{RERANK_REVISION}/{RERANK_FILE}:rrf-v5:single-pair"
 
 
 def model_snapshot(repo, revision, model_file, cache, download):
@@ -76,7 +76,9 @@ class LocalEmbedder:
         self.prepare()
         with self.lock:
             return np.asarray(list(self.model.embed(
-                ["passage: " + text for text in texts], batch_size=8,
+                # La cuantización dinámica depende del lote. Un pasaje por inferencia
+                # conserva el mismo vector al indexar desde cero o de forma incremental.
+                ["passage: " + text for text in texts], batch_size=1,
             )), dtype="<f4")
 
     @lru_cache(maxsize=128)
@@ -117,7 +119,8 @@ class LocalReranker:
     @lru_cache(maxsize=64)
     def _scores(self, query, texts):
         with self.lock:
-            return tuple(float(score) for score in self.model.rerank(query, texts, batch_size=4))
+            # Evita que un documento ajeno altere la puntuación al cambiar su lote.
+            return tuple(float(score) for score in self.model.rerank(query, texts, batch_size=1))
 
     def score(self, query, texts):
         self.prepare()

@@ -125,6 +125,11 @@ def chunk_document(document: Document, offsets, *, size=300, overlap=45):
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         blocks, pending = [], ""
         for paragraph in paragraphs:
+            # Un encabezado Markdown inicia una sección: no unir reglas distintas
+            # solo porque todavía caben en la ventana de tokens.
+            if pending and paragraph.startswith('#') and paragraph.split(maxsplit=1)[0].strip('#') == '':
+                blocks.append(pending)
+                pending = ''
             candidate = pending + "\n\n" + paragraph if pending else paragraph
             if pending and len(offsets(candidate)) > size:
                 blocks.append(pending)

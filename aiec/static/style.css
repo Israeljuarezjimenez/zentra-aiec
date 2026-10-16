@@ -507,6 +507,9 @@ code { color: #cfbfff; font-family: ui-monospace, SFMono-Regular, monospace; fon
 .engine-state { font-size: clamp(17px, 2.2vw, 27px) !important; }
 .card > h2:not(:first-child) { margin-top: 24px; }
 .card > p { line-height: 1.7; }
+main > .card, .guide-grid > .card, .review-column > .card:not(.analysis) { padding: 24px; }
+main > .card + .card { margin-top: 22px; }
+@media (max-width: 600px) { main > .card, .guide-grid > .card, .review-column > .card:not(.analysis) { padding: 20px; } }
 
 .desktop-mode-note { display:flex; align-items:center; gap:10px; padding:15px 20px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); background:#16232570; }
 .desktop-mode-note > .icon { color:var(--lime); }
@@ -573,3 +576,8 @@ code { color: #cfbfff; font-family: ui-monospace, SFMono-Regular, monospace; fon
 .archived-history { border-top: 1px solid var(--line); padding: 18px; color: var(--muted); }
 .archived-history > summary { font-size: 12px; }
 .archived-history .messages { margin-top: 14px; }
+
+.sidebar { overflow-y: auto; }
+.setup-steps { padding-left: 20px; color: var(--muted); font-size: 13px; }
+.setup-steps li + li { margin-top: 12px; }
+.connection-token { display: block; width: 100%; max-width: 600px; min-height: 44px; margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font-family: monospace; }

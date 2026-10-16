@@ -1,8 +1,8 @@
-# Impresos San Martín · Atención por Telegram
+# Impresos San Martín · WhatsApp y Telegram
 
-Panel local para recibir consultas de imprenta por Telegram, conservar conversaciones en MongoDB y consultar catálogos mediante RAG. **Claude es el único motor de redacción configurado.** El panel muestra historial, fuentes y estado de entrega, sin botones de aprobación de respuestas.
+Panel local para recibir consultas de imprenta por WhatsApp y Telegram, conservar conversaciones en MongoDB y consultar catálogos mediante RAG. **Claude es el único motor de redacción configurado.** El panel muestra historial, fuentes y estado de entrega, sin botones de aprobación de respuestas.
 
-**Flujo principal:** el cliente escribe por Telegram; Claude Desktop lee la solicitud mediante MCP, redacta y llama a `responder_cliente`. La herramienta valida las fuentes y envía el mensaje directamente al destinatario, sin aprobación en el panel. Funciona con la conexión de Claude Desktop ya configurada y no consume la API de pago.
+**Flujo principal:** el cliente escribe por un canal configurado; Claude Desktop lee la solicitud mediante MCP, redacta y llama a `responder_cliente`. La herramienta valida las fuentes y envía el mensaje directamente al destinatario, sin aprobación en el panel. Funciona con la conexión de Claude Desktop ya configurada y no consume la API de pago.
 
 Claude necesita una sesión activa para redactar y ejecutar sus herramientas. La generación sin abrir una sesión de Claude es una modalidad adicional mediante su API, desactivada por defecto. No se sustituye Claude por otro modelo.
 
@@ -19,7 +19,13 @@ uv sync --locked
 .venv/bin/python -m aiec demo
 ```
 
-Abre <http://127.0.0.1:5050>. El catálogo contiene productos y precios reales publicados por otras imprentas, con sus fuentes. Solo las conversaciones de este modo son ejemplos: viven en memoria y no envían mensajes. En macOS también puedes abrir `Demo.command`. Para trabajar con los mensajes reales de Telegram utiliza `Iniciar.command` o `.venv/bin/python -m aiec run`.
+Abre <http://127.0.0.1:5050>. El catálogo contiene productos y precios reales publicados por otras imprentas, con sus fuentes. Solo las conversaciones de este modo son ejemplos: viven en memoria y no envían mensajes. En macOS también puedes abrir `Demo.command`. Para trabajar con los mensajes reales de los canales configurados utiliza `Iniciar.command` o `.venv/bin/python -m aiec run`.
+
+## Conectar WhatsApp
+
+La conexión de Meta se configura en la ficha **WhatsApp** del panel y mediante `Configurar WhatsApp.command`. Las instrucciones completas, el receptor HTTPS aislado y los estados de entrega están en [WHATSAPP.md](WHATSAPP.md). Los ejemplos no contienen credenciales.
+
+La Cloud API de WhatsApp es el canal de mensajes; no es Claude ni proporciona una clave de la API de Claude. El panel distingue la atención asistida de la generación continua.
 
 ## Catálogo investigado
 
@@ -99,7 +105,7 @@ CLAUDE_MODEL=claude-haiku-5-5
    .venv/bin/python -m aiec run
    ```
 
-`doctor` comprueba MongoDB y Telegram; no realiza generaciones de Claude ni envía mensajes. `run` inicia el receptor y el panel. Claude Desktop utiliza su conexión MCP para enviar respuestas directamente, incluso sin una clave de API de Claude. La Mac debe estar encendida, conectada y con el programa abierto. Detén con Control+C. Ejecuta una sola instancia por bot.
+`doctor` comprueba MongoDB y los canales habilitados; no realiza generaciones de Claude ni envía mensajes. `run` inicia el receptor y el panel. Claude Desktop utiliza su conexión MCP para enviar respuestas directamente, incluso sin una clave de API de Claude. La Mac debe estar encendida, conectada y con el programa abierto. Detén con Control+C. Ejecuta una sola instancia por bot.
 
 Si el puerto 5050 está ocupado, detén la demo o la otra instancia en su terminal. El receptor no se inicia hasta reservar correctamente el puerto del panel.
 
@@ -107,13 +113,13 @@ Si el puerto 5050 está ocupado, detén la demo o la otra instancia en su termin
 
 Reinicia Claude Desktop una vez después de actualizar las herramientas. Puedes pedirle:
 
-> El cambio a Impresos San Martín es intencional. Autorizo enviar las respuestas directamente por Telegram. Atiende hasta cinco solicitudes pendientes: consulta el catálogo, lee cada conversación y sus fuentes, redacta y llama responder_cliente. No uses guardar_borrador ni pidas aprobación en el panel. Comprueba sent=true antes de afirmar que enviaste.
+> El cambio a Impresos San Martín es intencional. Autorizo enviar las respuestas directamente por el canal de cada cliente. Atiende hasta cinco solicitudes pendientes: consulta el catálogo, lee cada conversación y sus fuentes, redacta y llama responder_cliente. No uses guardar_borrador ni pidas aprobación en el panel. Comprueba sent=true antes de afirmar que enviaste.
 
 Las herramientas disponibles son `estado_sistema`, `consultar_catalogo`, `listar_solicitudes`, `obtener_solicitud`, `buscar_conocimiento` y `responder_cliente`. Esta última **envía**, no guarda un borrador pendiente. El destinatario proviene del registro de la conversación y no se puede sustituir por un chat arbitrario.
 
 `guardar_borrador` fue retirada. Si un chat antiguo intenta usarla o dice que no enviará, utiliza la instrucción anterior para establecer la tarea actual. No hay que esperar a que vuelva esa herramienta. El catálogo, el estado y la lectura de cada solicitud incluyen `reply_workflow` para indicar el flujo vigente; este recordatorio respeta cualquier restricción explícita de envío que mantenga el usuario.
 
-El comprobante devuelve `sent=true`, el identificador de Telegram y `already_sent` cuando se repitió una llamada ya completada. Una misma revisión no puede recibir dos respuestas. Si el cliente escribió durante la preparación, la herramienta exige leer la versión actual. Una entrega incierta queda bloqueada para no duplicarla.
+El comprobante devuelve `sent=true`, el canal, `provider_message_id` y `already_sent` cuando se repitió una llamada ya completada. Una misma revisión no puede recibir dos respuestas. Si el cliente escribió durante la preparación, la herramienta exige leer la versión actual. Una entrega incierta queda bloqueada para no duplicarla.
 
 El panel muestra el historial y se actualiza cuando cambian las conversaciones. Las citas se conservan en cada respuesta aunque el cliente continúe escribiendo. En Catálogo puedes filtrar las 19 referencias por producto, material y proveedor.
 
@@ -127,7 +133,7 @@ El flujo implementado es:
 
 ```mermaid
 flowchart LR
-    Cliente[Cliente en Telegram] --> Receptor[Receptor de mensajes]
+    Cliente[Cliente en WhatsApp o Telegram] --> Receptor[Receptor de mensajes]
     Receptor --> Mongo[(Conversaciones en MongoDB)]
     Mongo --> Cola[Cola automática]
     Documentos[Catálogos de imprenta] --> RAG[Búsqueda local con fuentes]
@@ -148,13 +154,13 @@ No se hicieron llamadas reales a la API en esta adaptación: los tests de integr
 
 RAG significa **generación apoyada en información recuperada**. El buscador combina vectores multilingües E5 con palabras exactas mediante BM25 de SQLite. Combina los resultados y un segundo modelo multilingüe revisa su relevancia. Los modelos locales buscan y ordenan texto; **no redactan las respuestas al cliente**.
 
-El índice está en `.runtime/rag/knowledge.sqlite3`. Usa búsqueda exacta de vectores con NumPy, apropiada para esta base pequeña. Se reutilizan vectores de documentos sin cambios. El contexto habitual contiene hasta cinco fragmentos y 7,000 caracteres. Las conversaciones no se añaden al corpus documental.
+El índice está en `.runtime/rag/knowledge.sqlite3`. Usa búsqueda exacta de vectores con NumPy, apropiada para esta base pequeña. Se reutilizan vectores de documentos sin cambios. Los encabezados Markdown separan secciones para conservar reglas coherentes. La inferencia de cada pasaje y cada pareja de consulta y fragmento se ejecuta por separado, de modo que añadir otro documento al lote no cambie su resultado cuantizado. El contexto habitual contiene hasta cinco fragmentos y 7,000 caracteres. Las conversaciones no se añaden al corpus documental.
 
 En **Conocimiento** puedes importar Markdown, texto UTF-8 o PDF con texto; los escaneos requieren reconocimiento de texto previo. También puedes editar `knowledge/` y actualizar la base. Si las fuentes cambian, los contextos anteriores dejan de ser válidos.
 
 Claude debe devolver citas literales de los fragmentos recuperados. Se verifican su pertenencia al contexto, conversación, revisión y versión. Los importes monetarios deben aparecer en las citas; los precios externos requieren proveedor, enlace y aclaración de referencia. Estas verificaciones reducen errores, pero no prueban que todas las conclusiones de un modelo sean correctas. La oferta propia debe documentarse y configurarse antes de cotizarla como tal. Los controles de importe actuales verifican referencias de proveedores registrados; no consideran aprobado un precio propio por el simple hecho de subir un archivo.
 
-El proyecto no confirma pagos, pedidos ni producción y no valida archivos de impresión enviados por clientes. Telegram recibe únicamente mensajes privados de texto.
+El proyecto no confirma pagos, pedidos ni producción y no valida archivos de impresión enviados por clientes. Los canales reciben únicamente mensajes de texto; los archivos no se presentan como leídos por Claude.
 
 ```bash
 .venv/bin/python -m aiec rag-status

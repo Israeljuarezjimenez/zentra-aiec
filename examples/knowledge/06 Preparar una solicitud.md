@@ -1,6 +1,6 @@
 # Preparación de una solicitud de impresión
 
-Guía operativa del asistente, no políticas comerciales de la imprenta. Fecha: 2026-10-15.
+Guía operativa del asistente, no políticas comerciales de la imprenta. Fecha: 2026-10-16.
 
 Un trabajo se describe mediante producto, cantidad, medida, material, número de caras, acabados y fecha deseada. Conservar los datos escritos por el cliente. Si faltan, ofrecer variantes como propuestas; no rellenar los datos como si fueran hechos. Los precios por lote no se extrapolan por regla de tres.
 
@@ -19,4 +19,4 @@ Los datos ausentes se registran internamente para preparar la solicitud: cantida
 
 ## Estados de atención
 
-Pendiente significa que falta una respuesta de Claude. Respondida significa que Telegram confirmó el envío, no que el pedido esté confirmado ni que el cliente lo haya leído. Archivada significa que se cerró la atención actual; un nuevo mensaje vuelve a abrirla. Si Telegram no confirma un envío, conservar el intento y comprobar su estado antes de repetirlo.
+Pendiente significa que falta una respuesta de Claude. Respondida significa que el canal aceptó el envío, no que el pedido esté confirmado ni que el cliente lo haya leído. En WhatsApp, la entrega y la lectura se confirman por avisos separados de Meta. Archivada significa que se cerró la atención actual; un nuevo mensaje vuelve a abrirla. Si el canal no confirma un envío, conservar el intento y comprobar su estado antes de repetirlo.
