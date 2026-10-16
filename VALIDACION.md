@@ -1,6 +1,6 @@
 # Validación de Impresos San Martín
 
-Validación realizada el 15 de octubre de 2026. Los datos de pruebas y las entregas simuladas no corresponden a mensajes enviados a clientes reales.
+Validación realizada el 15 de octubre de 2026. El catálogo reúne fuentes públicas reales. Las pruebas del programa utilizan conversaciones de ejemplo y simulan los envíos para no contactar clientes; esto no convierte el catálogo en información inventada.
 
 | Área | Resultado observado |
 | --- | --- |

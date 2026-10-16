@@ -19,7 +19,7 @@ uv sync --locked
 .venv/bin/python -m aiec demo
 ```
 
-Abre <http://127.0.0.1:5050>. Las conversaciones de la demo son ficticias, viven en memoria y no envían mensajes. En macOS también puedes abrir `Demo.command`.
+Abre <http://127.0.0.1:5050>. El catálogo contiene productos y precios reales publicados por otras imprentas, con sus fuentes. Solo las conversaciones de este modo son ejemplos: viven en memoria y no envían mensajes. En macOS también puedes abrir `Demo.command`. Para trabajar con los mensajes reales de Telegram utiliza `Iniciar.command` o `.venv/bin/python -m aiec run`.
 
 ## Catálogo investigado
 

@@ -27,7 +27,7 @@ def serve(service, settings):
     stop = threading.Event()
     try:
         if service.demo:
-            print("DEMO: datos ficticios en memoria. Sin conexión a Claude, Telegram ni Atlas.", flush=True)
+            print("DEMOSTRACIÓN: conversaciones de ejemplo en memoria y catálogo con referencias reales. Sin conexión a Claude, Telegram ni Atlas.", flush=True)
         else:
             me = check_bot(service.telegram)
             service.repo.state.update_one({'_id': 'bot_health'}, {'$set': {

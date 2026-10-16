@@ -49,7 +49,7 @@ def main(argv=None):
     parser.add_argument("command", choices=["setup", "doctor", "run", "demo", "mcp", "claude-config", 'migrate-business', 'sync-telegram-profile',
                                             "load-examples", "rag-index", "rag-search", "rag-status", "rag-eval"])
     parser.add_argument("query", nargs="?", help="Texto de búsqueda para rag-search.")
-    parser.add_argument("--demo", action="store_true", help="Datos ficticios en memoria; solo para pruebas MCP.")
+    parser.add_argument("--demo", action="store_true", help="Conversaciones de ejemplo en memoria; no envía mensajes.")
     parser.add_argument('--since', help='Inicio de la imprenta en ISO 8601 con zona horaria; solo para migrar historial.')
     args = parser.parse_args(argv)
     configure_logs()
