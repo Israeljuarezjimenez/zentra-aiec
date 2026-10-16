@@ -4,9 +4,10 @@ Validación realizada el 15 de octubre de 2026. Los datos de pruebas y las entre
 
 | Área | Resultado observado |
 | --- | --- |
-| Pruebas automatizadas | 85 pruebas aprobadas. |
+| Pruebas automatizadas | 91 pruebas aprobadas. |
 | Protocolo MCP | Comunicación real por stdio: consultar solicitud, recuperar fuentes, responder y obtener comprobante. Telegram simulado. |
 | Envío directo | Sin aprobación en el panel. Una llamada repetida devuelve el comprobante sin repetir la entrega. |
+| Migración de herramientas | Catálogo, estado y solicitud indican usar responder_cliente. El flujo distingue una solicitud pendiente de una entrega incierta o ya completada; guardar_borrador permanece retirada. |
 | Concurrencia en MongoDB Atlas | Ocho llamadas simultáneas, una sola entrega en transporte simulado; colecciones temporales eliminadas al terminar. |
 | Entrega incierta | Un intento sin confirmación queda bloqueado para impedir duplicados. |
 | Historial | Conserva fuentes y análisis de la respuesta enviada, incluso cuando el cliente vuelve a escribir. |
