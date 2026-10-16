@@ -34,7 +34,7 @@ def validate_text(text):
 
 class Service:
     def __init__(self, repository: Repository, telegram: Telegram | None = None, *, demo=False, knowledge=None, responder=None,
-                 whatsapp=None, settings=None):
+                 whatsapp=None, settings=None, channel_refresh=None):
         self.repo = repository
         self.telegram = telegram
         self.demo = demo
@@ -42,6 +42,7 @@ class Service:
         self.responder = responder
         self.whatsapp = whatsapp
         self.settings = settings
+        self.channel_refresh = channel_refresh
 
     def system_status(self):
         desktop = self.repo.state.find_one({'_id': 'claude_desktop'}) or {}
@@ -65,8 +66,19 @@ class Service:
                               'generation': knowledge['generation']} if knowledge else None}
 
     def whatsapp_setup(self):
+        from .config import ROOT
+        from .whatsapp_tunnel import read_state, process_matches
         settings = self.settings
         checked = self.repo.state.find_one({'_id':'whatsapp_config'}) or {}
+        tunnel = read_state(ROOT / '.runtime' / 'whatsapp') if settings else {}
+        tunnel_running = process_matches(tunnel, settings.whatsapp_webhook_port) if tunnel else False
+        registered = {}
+        try:
+            registered = json.loads((ROOT / '.runtime' / 'whatsapp' / 'connection.json').read_text()) if settings else {}
+            if not isinstance(registered, dict):
+                registered = {}
+        except (OSError, ValueError):
+            pass
         return {
             'enabled':bool(settings and settings.whatsapp_enabled),
             'credentials_saved':bool(settings and settings.whatsapp_access_token and settings.whatsapp_phone_number_id),
@@ -76,6 +88,10 @@ class Service:
             'credentials_valid':checked.get('credentials_valid',False),
             'number_name':checked.get('number_name',''),
             'webhook_port':settings.whatsapp_webhook_port if settings else 5051,
+            'callback_url':tunnel.get('callback_url') if tunnel_running else None,
+            'registered':bool(tunnel_running and registered.get('webhook_registered')
+                and registered.get('application_subscribed')
+                and registered.get('callback_url')==tunnel.get('callback_url')),
         }
 
     def panel_state(self):

@@ -23,7 +23,7 @@ Abre <http://127.0.0.1:5050>. El catálogo contiene productos y precios reales p
 
 ## Conectar WhatsApp
 
-La conexión de Meta se configura en la ficha **WhatsApp** del panel y mediante `Configurar WhatsApp.command`. Las instrucciones completas, el receptor HTTPS aislado y los estados de entrega están en [WHATSAPP.md](WHATSAPP.md). Los ejemplos no contienen credenciales.
+La conexión de Meta se configura en la ficha **WhatsApp** del panel y mediante `Conectar WhatsApp.command`. Las instrucciones completas, el receptor HTTPS aislado y los estados de entrega están en [WHATSAPP.md](WHATSAPP.md). Los ejemplos no contienen credenciales.
 
 La Cloud API de WhatsApp es el canal de mensajes; no es Claude ni proporciona una clave de la API de Claude. El panel distingue la atención asistida de la generación continua.
 

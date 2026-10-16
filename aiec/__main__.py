@@ -47,7 +47,7 @@ def configure_logs():
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Impresos San Martín · WhatsApp, Telegram, RAG y Claude.")
     parser.add_argument("command", choices=["setup", "doctor", "run", "demo", "mcp", "claude-config", 'migrate-business', 'sync-telegram-profile',
-                                            "load-examples", "rag-index", "rag-search", "rag-status", "rag-eval", 'whatsapp-check','configure-whatsapp'])
+                                            "load-examples", "rag-index", "rag-search", "rag-status", "rag-eval", 'whatsapp-check','configure-whatsapp','whatsapp-tunnel','whatsapp-connect'])
     parser.add_argument("query", nargs="?", help="Texto de búsqueda para rag-search.")
     parser.add_argument("--demo", action="store_true", help="Conversaciones de ejemplo en memoria; no envía mensajes.")
     parser.add_argument('--since', help='Inicio de la imprenta en ISO 8601 con zona horaria; solo para migrar historial.')
@@ -66,6 +66,18 @@ def main(argv=None):
             return 0
         except (ValueError, OSError):
             print('No se guardó una configuración válida de WhatsApp. Revisa los datos introducidos.',file=sys.stderr)
+            return 1
+    if args.command == 'whatsapp-tunnel':
+        from .whatsapp_tunnel import ensure_tunnel
+        try:
+            settings = Settings.load()
+            result = ensure_tunnel(ROOT / '.runtime' / 'whatsapp', settings.whatsapp_webhook_port, settings.port)
+            print('Dirección HTTPS para la demo: '+result['callback_url'])
+            print('Publica únicamente el receptor de WhatsApp. Para recibir mensajes aún deben estar configurados el secreto y la suscripción en Meta.')
+            print('La dirección dura mientras el túnel esté abierto; cambia si creas otro.')
+            return 0
+        except (ValueError, OSError):
+            print('No se pudo preparar el túnel. Comprueba cloudflared y la conexión a internet; consulta los registros privados.',file=sys.stderr)
             return 1
 
     from .bot import check_bot
@@ -101,6 +113,14 @@ def main(argv=None):
                 print(json.dumps(knowledge.search(args.query), ensure_ascii=False, indent=2))
             return 0
         settings = Settings.load()
+        if args.command == 'whatsapp-connect':
+            from .whatsapp_connect import connect
+            result = connect(settings, ROOT / '.runtime' / 'whatsapp')
+            print('✓ Receptor público verificado y registrado en Meta; cuenta de WhatsApp suscrita.')
+            print('✓ AIEC reiniciado. No se enviaron mensajes a clientes ni se utilizó la API de Claude.')
+            print('Dirección para la demo: '+result['callback_url'])
+            print('Claude Desktop recogerá el canal al utilizar las herramientas AIEC. Si acabas de actualizar el código, reinícialo una vez.')
+            return 0
         if args.command == 'migrate-business':
             from datetime import datetime
             from .migration import migrate_business
@@ -180,6 +200,9 @@ def main(argv=None):
 
         if args.command == "mcp":
             from .mcp_server import create_mcp
+            if not service.demo:
+                from .whatsapp_setup import refresh_mcp_channel
+                service.channel_refresh = refresh_mcp_channel
             create_mcp(service).run(transport="stdio")
             return 0
 

@@ -1,9 +1,38 @@
 """Configuración local: introducir credenciales sin publicarlas en el chat o consola."""
 from getpass import getpass
+from dataclasses import replace
 import os
 import secrets
 
 from dotenv import dotenv_values, set_key
+
+from .config import ConfigurationError, ROOT
+
+
+def refresh_mcp_channel(service):
+    """Recoger el canal recién configurado sin cerrar la conversación de Claude."""
+    if service.demo or service.settings is None:
+        return
+    values = dotenv_values(ROOT / '.env')
+    if values.get('WHATSAPP_ENABLED', '').strip().lower() != 'true':
+        service.whatsapp = None
+        return
+    candidate = replace(service.settings, whatsapp_enabled=True,
+        **{name:values.get(name.upper(), '') or '' for name in (
+            'whatsapp_access_token','whatsapp_phone_number_id','whatsapp_business_account_id',
+            'whatsapp_app_secret','whatsapp_verify_token','whatsapp_graph_version')})
+    try:
+        candidate.validate_whatsapp(webhook=True)
+    except ConfigurationError:
+        service.whatsapp = None
+        return
+    old = service.settings
+    if service.whatsapp is None or any(getattr(old,k)!=getattr(candidate,k) for k in (
+            'whatsapp_access_token','whatsapp_phone_number_id','whatsapp_graph_version')):
+        from .whatsapp import WhatsApp
+        service.whatsapp = WhatsApp(candidate.whatsapp_access_token, candidate.whatsapp_phone_number_id,
+                                   graph_version=candidate.whatsapp_graph_version)
+    service.settings = candidate
 
 
 def configure(path, *, ask=input, ask_secret=getpass):

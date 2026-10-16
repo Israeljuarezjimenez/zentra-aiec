@@ -78,6 +78,8 @@ def create_mcp(service: Service):
     read_only = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 
     def activity(tool):
+        if service.channel_refresh is not None:
+            service.channel_refresh(service)
         service.repo.state.update_one({'_id': 'claude_desktop'}, {'$set': {
             'last_seen_at': now(), 'last_tool': tool,
         }}, upsert=True)

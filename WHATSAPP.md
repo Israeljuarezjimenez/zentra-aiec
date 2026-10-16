@@ -18,11 +18,32 @@ TELEGRAM_ENABLED=true
 
 Los valores reales se guardan únicamente en `.env`, con permisos privados. El **token de acceso** permite usar la API de WhatsApp. El **secreto de la aplicación** permite verificar las firmas de los eventos. El **token de verificación** es una cadena aleatoria propia que se copia en Meta para verificar la dirección del webhook. Son tres valores distintos.
 
-1. Abre `Configurar WhatsApp.command` o ejecuta `.venv/bin/python -m aiec configure-whatsapp`. Solo pide los valores que falten, oculta los secretos y habilita el canal. Conserva las credenciales existentes y la configuración del motor de Claude.
-2. Ejecuta `.venv/bin/python -m aiec whatsapp-check`. Comprueba acceso al número y su pertenencia a la cuenta sin enviar mensajes. Si Meta identifica el registro como `Test Number`, configura un número de negocio para atender a clientes reales; no confundas el número de prueba con el de la imprenta.
-3. Reinicia el programa con `.venv/bin/python -m aiec run`. El panel continúa en `127.0.0.1:5050`. El receptor aislado de WhatsApp utiliza `127.0.0.1:5051`.
-4. Conecta una dirección HTTPS pública estable al puerto **5051** mediante tu servidor o proxy. En Meta, configura la dirección de devolución terminada en `/webhook/whatsapp`, verifica con el token mostrado en la ficha privada y suscribe el campo `messages` de la aplicación a la cuenta de WhatsApp Business. **El puerto del panel no se publica.** Un túnel temporal puede servir para desarrollar, pero su dirección cambiante no sustituye una dirección estable.
-5. Abre `/whatsapp` en el panel para consultar los pasos y la última comprobación. El token de acceso y el secreto de la aplicación nunca se muestran; el token de verificación se muestra solamente en esa ficha local.
+## Conectar una demo con el número de prueba
+
+El `Test Number` de Meta sirve para esta demo con destinatarios de prueba agregados y verificados. No hace falta registrar otro número para comprobar el proyecto.
+
+1. Instala el conector del túnel en Mac: `brew install cloudflared`. No requiere comprar un dominio ni crear una cuenta de Cloudflare para la demo.
+2. Abre **`Conectar WhatsApp.command`**. Solo pide los datos privados que falten. El secreto de la aplicación se obtiene en Meta → tu aplicación → Configuración → Básica; no viene incluido en el token de acceso y no debe inventarse.
+3. El conector comprueba acceso al número, cuenta y secreto antes de reiniciar AIEC. Prepara o reutiliza una dirección HTTPS hacia el puerto del receptor, reinicia exclusivamente la instancia de este proyecto, comprueba la dirección y registra tanto el webhook de la aplicación como la suscripción de la cuenta en Meta. Conserva un respaldo privado de la suscripción anterior. No envía mensajes a teléfonos.
+4. Abre `/whatsapp` en el panel para consultar la dirección y el resultado. Los secretos de acceso y aplicación no se muestran. La comprobación final del registro exige coincidencia de aplicación, dirección activa y campo `messages`.
+5. En Meta → WhatsApp → Pruebas de API, selecciona el `Test Number` en **De**, agrega y verifica tu celular en **Para** y utiliza el botón de Meta para recibir su saludo de prueba. Puedes responder en ese chat desde el teléfono autorizado. Los mensajes solo aparecerán en AIEC cuando su receptor esté activado y suscrito.
+6. Claude Desktop recoge el canal habilitado al utilizar las herramientas. Si actualizas desde una versión anterior del programa, reinicia Claude una vez para cargar el código nuevo. El envío es directo; la generación de Claude continúa con las condiciones explicadas abajo.
+
+La dirección gratuita termina en `trycloudflare.com`, funciona mientras el proceso del túnel está abierto y cambia si se crea otro túnel. Es una conexión para demostraciones, sin garantía de disponibilidad. La Mac y AIEC deben permanecer encendidos y conectados. Consulta las [condiciones de Quick Tunnels de Cloudflare](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+
+Para ejecutar los pasos por separado:
+
+```bash
+.venv/bin/python -m aiec configure-whatsapp
+.venv/bin/python -m aiec whatsapp-tunnel
+.venv/bin/python -m aiec whatsapp-connect
+```
+
+Crear el túnel por sí solo no configura Meta ni habilita una recepción sin secreto. `whatsapp-connect` valida antes de registrar y solo declara éxito después de comprobar ambas suscripciones. Si otro programa ocupa el puerto, no lo detiene. Los registros y metadatos del túnel quedan en `.runtime/whatsapp/` con permisos privados.
+
+## Dirección estable y configuración manual
+
+Para una instalación pública utiliza una dirección HTTPS estable hacia el puerto del receptor. En Meta configura la devolución terminada en `/webhook/whatsapp`, verifica con el token de la ficha privada y suscribe `messages` y la aplicación a la cuenta de WhatsApp. **El puerto 5050 del panel no se publica.** Un número comercial y las condiciones de producción deben completarse antes de abrir la atención al público.
 
 `TELEGRAM_ENABLED=false` desactiva Telegram al reiniciar, si se desea utilizar únicamente WhatsApp. Las conversaciones guardadas se conservan. Nunca se envía una respuesta de Telegram a un número de WhatsApp ni a la inversa.
 

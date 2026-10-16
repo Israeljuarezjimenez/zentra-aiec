@@ -30,3 +30,33 @@ def test_invalid_configuration_does_not_replace_any_saved_credentials(tmp_path):
     with pytest.raises(ValueError):
         configure(env,ask=lambda _prompt:'not-a-number',ask_secret=lambda _prompt:'bad')
     assert env.read_text()==before
+
+
+def test_mcp_loads_a_newly_enabled_channel_without_restarting_claude(service,monkeypatch):
+    from dataclasses import replace
+    from aiec.config import Settings
+    from aiec.whatsapp_setup import refresh_mcp_channel
+    values={'WHATSAPP_ENABLED':'true','WHATSAPP_ACCESS_TOKEN':'unit-access',
+        'WHATSAPP_PHONE_NUMBER_ID':'111222333444','WHATSAPP_BUSINESS_ACCOUNT_ID':'555666777888',
+        'WHATSAPP_APP_SECRET':'unit-app-secret-123456','WHATSAPP_VERIFY_TOKEN':'unit-verification-token-123456',
+        'WHATSAPP_GRAPH_VERSION':'v26.0'}
+    monkeypatch.setattr('aiec.whatsapp_setup.dotenv_values',lambda _path:values)
+    service.settings=Settings()
+    refresh_mcp_channel(service)
+    first=service.whatsapp
+    assert first is not None and service.settings.whatsapp_enabled
+    refresh_mcp_channel(service)
+    assert service.whatsapp is first
+    values['WHATSAPP_ENABLED']='false'
+    refresh_mcp_channel(service)
+    assert service.whatsapp is None
+    first.client.close()
+
+
+def test_invalid_new_credentials_do_not_enable_a_channel_or_modify_telegram(service,telegram,monkeypatch):
+    from aiec.config import Settings
+    from aiec.whatsapp_setup import refresh_mcp_channel
+    service.settings=Settings()
+    monkeypatch.setattr('aiec.whatsapp_setup.dotenv_values',lambda _path:{'WHATSAPP_ENABLED':'true'})
+    refresh_mcp_channel(service)
+    assert service.whatsapp is None and service.telegram is telegram and telegram.calls==[]
