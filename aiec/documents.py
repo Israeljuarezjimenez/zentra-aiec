@@ -71,7 +71,7 @@ def read_document(path: Path, source: str):
 def catalog_document(path: Path):
     data = json.loads(path.read_text(encoding="utf-8"))
     sections = [
-        f"Negocio: {data['business']}\nMoneda: {data['currency']}\nMercado: {data['market']}\nHorario: {data['hours']}",
+        f"Negocio: {data['business']}\nMoneda: {data['currency']}\nMercado: {data['market']}\nHorario: {data['hours'] or 'No publicado.'}",
     ]
     if data.get("commercial_context"):
         sections.append(f"Estado del catálogo: {data.get('catalog_status', 'sin especificar')}\n"

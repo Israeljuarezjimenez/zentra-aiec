@@ -1,12 +1,12 @@
 import json
 import hashlib
 from datetime import timedelta
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .repository import ConflictError, Repository, now
+from .business import business_id, catalog, commercial_status, current_messages
 from .telegram import DeliveryUncertain, Telegram, TelegramRejected
 from .validation import validate_commercial_reply
 
@@ -19,13 +19,10 @@ class Analysis(BaseModel):
     priority: Literal["baja", "media", "alta"]
     priority_reason: str = Field(min_length=1, max_length=400)
     # El monto se mantiene como texto para no confundir presupuesto y cotización.
-    budget: str | None = Field(default=None, max_length=150)
+    budget: str | None = Field(default=None, max_length=150,
+        description='Cita literal del presupuesto escrito por el cliente para este pedido; null si no lo indicó.')
     evidence: list[str] = Field(min_length=1, max_length=8)
     missing_data: list[str] = Field(default_factory=list, max_length=10)
-
-
-def catalog():
-    return json.loads(Path(__file__).with_name("catalog.json").read_text(encoding="utf-8"))
 
 
 def validate_text(text):
@@ -52,6 +49,7 @@ class Service:
             receiver_status = 'sin_iniciar'
         knowledge = self.knowledge.status() if self.knowledge is not None else None
         return {'mode': 'demo' if self.demo else 'claude_api' if self.responder else 'claude_desktop',
+                'business': commercial_status(),
                 'delivery_ready': not self.demo and self.telegram is not None,
                 'receiver': receiver_status,
                 'claude_last_seen': desktop['last_seen_at'].isoformat() if desktop.get('last_seen_at') else None,
@@ -73,7 +71,9 @@ class Service:
         if self.knowledge is None:
             return {"status": "no_disponible", "results": [],
                     "instruction": "RAG no está conectado en esta demo. No inventar fuentes."}
-        messages = [m["text"] for m in ticket["messages"] if m["role"] == "cliente"][-3:]
+        messages = [m["text"] for m in current_messages(ticket) if m["role"] == "cliente"][-3:]
+        if not messages:
+            raise ValueError('Esta conversación no tiene mensajes del negocio actual. El historial anterior está archivado.')
         query = query or "\n".join(reversed(messages))[:4000]
         return self.knowledge.search(query, ticket_id=ticket["_id"], revision=ticket["revision"])
 
@@ -95,11 +95,16 @@ class Service:
     def validate_response(self, ticket_id, revision, analysis: Analysis, text, *, rag_context_id=None, sources=None):
         text = validate_text(text)
         ticket = self.repo.get(ticket_id)
-        customer_text = "\n".join(m["text"] for m in ticket["messages"] if m["role"] == "cliente")
+        if ticket.get('business_id') != business_id():
+            raise ValueError('La solicitud pertenece a otro negocio y no se puede responder desde esta imprenta.')
+        customer_text = "\n".join(m["text"] for m in current_messages(ticket) if m["role"] == "cliente")
         for evidence in analysis.evidence:
             if not evidence.strip() or evidence not in customer_text:
                 raise ValueError("Cada evidencia debe ser una cita exacta y no vacía del mensaje del cliente.")
+        if analysis.budget is not None and (not analysis.budget.strip() or analysis.budget.strip() not in customer_text):
+            raise ValueError('El presupuesto debe ser una cita literal de los mensajes del cliente para este negocio.')
         saved_analysis = analysis.model_dump()
+        saved_analysis['business_id'] = business_id()
         if self.knowledge is not None:
             saved_analysis["knowledge"] = self.knowledge.validate_citations(
                 rag_context_id, sources or [], ticket_id=ticket_id, revision=revision,
@@ -143,6 +148,8 @@ class Service:
 
     def _delivery_receipt(self, ticket_id, revision, text):
         current = self.repo.get(ticket_id)
+        if current.get('business_id') != business_id():
+            raise ValueError('La solicitud pertenece a otro negocio y está archivada.')
         attempt = current.get('attempt', {})
         if current['revision'] != revision:
             raise ConflictError('El cliente escribió un mensaje nuevo. Consulta la conversación actual antes de responder.')
@@ -185,8 +192,10 @@ def public_ticket(ticket, *, full=False):
         "status": ticket["status"], "analysis": ticket.get("analysis"),
         "draft": ticket.get("draft"), "delivery_state": ticket["delivery_state"],
         "updated_at": ticket["updated_at"].isoformat(),
+        'business_id': ticket.get('business_id'),
+        'archived_message_count': ticket.get('archived_message_count', 0),
     }
-    messages = ticket["messages"][-20:] if full else ticket["messages"][-1:]
+    messages = current_messages(ticket)[-20:] if full else current_messages(ticket)[-1:]
     result["messages"] = [{"role": m["role"], "text": m["text"],
                            "date": m["created_at"].isoformat()} for m in messages]
     if result["draft"]:

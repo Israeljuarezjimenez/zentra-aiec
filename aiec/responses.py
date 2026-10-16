@@ -6,6 +6,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from .config import ConfigurationError
+from .business import current_messages
 from .prompts import REPLY_GUIDANCE
 from .rag import SourceCitation
 from .service import Analysis, catalog, validate_text
@@ -58,7 +59,7 @@ class ClaudeResponder:
         context = service.knowledge_context(ticket)
         data = catalog()
         history, budget = [], 16000
-        for message in reversed(ticket['messages'][-12:]):
+        for message in reversed(current_messages(ticket)[-12:]):
             text = message['text'][:min(budget, 4000)]
             if not text:
                 break

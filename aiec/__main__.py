@@ -46,10 +46,11 @@ def configure_logs():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Impresos San Martín · Telegram, RAG y Claude.")
-    parser.add_argument("command", choices=["setup", "doctor", "run", "demo", "mcp", "claude-config",
+    parser.add_argument("command", choices=["setup", "doctor", "run", "demo", "mcp", "claude-config", 'migrate-business', 'sync-telegram-profile',
                                             "load-examples", "rag-index", "rag-search", "rag-status", "rag-eval"])
     parser.add_argument("query", nargs="?", help="Texto de búsqueda para rag-search.")
     parser.add_argument("--demo", action="store_true", help="Datos ficticios en memoria; solo para pruebas MCP.")
+    parser.add_argument('--since', help='Inicio de la imprenta en ISO 8601 con zona horaria; solo para migrar historial.')
     args = parser.parse_args(argv)
     configure_logs()
     if args.command == "setup":
@@ -61,7 +62,7 @@ def main(argv=None):
 
     from .bot import check_bot
     from .repository import Repository
-    from .service import Service
+    from .service import Service, catalog
     from .telegram import DeliveryUncertain, Telegram, TelegramRejected
 
     try:
@@ -88,21 +89,42 @@ def main(argv=None):
                 return 0 if report["passed"] else 1
             else:
                 if not args.query:
-                    parser.error('Ejemplo: python -m aiec rag-search "campañas de publicidad"')
+                    parser.error('Ejemplo: python -m aiec rag-search "precio de tarjetas de presentación"')
                 print(json.dumps(knowledge.search(args.query), ensure_ascii=False, indent=2))
             return 0
         settings = Settings.load()
+        if args.command == 'migrate-business':
+            from datetime import datetime
+            from .migration import migrate_business
+            if not args.since:
+                parser.error('migrate-business requiere --since con la fecha real del cambio de negocio.')
+            since = datetime.fromisoformat(args.since)
+            repo = Repository.connect(settings)
+            try:
+                result = migrate_business(repo, since, ROOT / '.runtime' / 'business-backups')
+                print(json.dumps(result, ensure_ascii=False))
+                return 1 if result['conflicts'] or result['blocked'] else 0
+            finally:
+                repo.database.client.close()
         if args.command == "demo" or (args.command == "mcp" and args.demo):
             from .demo import demo_service
             service = demo_service()
         else:
-            settings.validate(telegram=args.command in ("run", "doctor", "mcp"), web=args.command == "run")
+            settings.validate(telegram=args.command in ("run", "doctor", "mcp", 'sync-telegram-profile'), web=args.command == "run")
             repo = Repository.connect(settings)
-            service = Service(repo, Telegram(settings.bot_token) if args.command in ("run", "doctor", "mcp") else None,
+            service = Service(repo, Telegram(settings.bot_token) if args.command in ("run", "doctor", "mcp", 'sync-telegram-profile') else None,
                               knowledge=KnowledgeBase())
             if args.command == "run":
                 from .responses import configured_responder
                 service.responder = configured_responder(settings)
+
+        if args.command == 'sync-telegram-profile':
+            from .telegram_profile import sync_telegram_profile
+            try:
+                print(json.dumps(sync_telegram_profile(service.telegram, ROOT / '.runtime' / 'business-backups'), ensure_ascii=False))
+                return 0
+            finally:
+                repo.database.client.close()
 
         if args.command == "doctor":
             print("✓ Conexión con MongoDB e índices disponibles.")
@@ -113,6 +135,10 @@ def main(argv=None):
                   "✓ Envío directo desde Claude Desktop por MCP, sin API de pago. Generación en segundo plano: desactivada.")
             print("✓ Conocimiento actualizado." if state['ready'] and not state['stale'] else
                   "Prepara el conocimiento con: .venv/bin/python -m aiec rag-index")
+            print('Negocio: ' + catalog()['business'] + '. Atención con referencias externas; cotización propia no habilitada.')
+            unscoped = service.repo.tickets.count_documents({'business_id': {'$exists': False}})
+            if unscoped:
+                print(f'Hay {unscoped} conversaciones anteriores sin clasificar. Usa migrate-business con la fecha real del cambio antes de atenderlas.')
             print("Listo para ejecutar: .venv/bin/python -m aiec run")
             return 0
 

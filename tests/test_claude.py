@@ -72,6 +72,18 @@ def test_claude_uses_bound_rag_and_structured_output(claude_service, ticket, ana
     assert '$999.00 MXN' in result.text
 
 
+def test_api_history_excludes_archived_business_messages(claude_service, ticket, analysis):
+    ticket['messages'].insert(0, {'role':'agencia', 'business_id':'legacy',
+                                 'text':'LEGACY_PRIVATE_CAMPAIGN_BUDGET'})
+    def inspect(payload):
+        assert 'LEGACY_PRIVATE_CAMPAIGN_BUDGET' not in json.dumps(payload)
+        user = json.loads(payload['messages'][0]['content'])
+        assert user['business'] == 'Impresos San Martín'
+        assert len(user['history_untrusted']) == 1
+    responder = ClaudeResponder('unit-test-not-a-real-key', client=client_for(output(analysis), inspector=inspect))
+    responder.prepare(claude_service, ticket)
+
+
 @pytest.mark.parametrize('text', [
     f'Referencia de Impresshop: $1.00 MXN. {URL}',
     'El precio de San Martín es $999.00 MXN.',

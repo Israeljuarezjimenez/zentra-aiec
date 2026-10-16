@@ -55,7 +55,7 @@ def test_same_prepared_response_only_sends_once(service, repo, telegram, drafted
     current = repo.get(drafted["_id"])
     assert current["status"] == "respondida"
     assert current["draft"] is None
-    assert current["messages"][-1]["role"] == "agencia"
+    assert current["messages"][-1]["role"] == "asistente"
 
 
 def test_changed_draft_cannot_be_sent_from_old_tab(service, analysis, telegram, drafted):
@@ -97,7 +97,7 @@ def test_message_arriving_during_send_stays_pending(service, repo, telegram, dra
     assert current["status"] == "pendiente"
     assert current["draft"] is None
     assert any(m["text"] == "Tengo una pregunta adicional." for m in current["messages"])
-    assert current["messages"][-1]["role"] == "agencia"
+    assert current["messages"][-1]["role"] == "asistente"
 
 
 def test_repeated_delivery_confirmation_does_not_duplicate_history(service, repo, drafted):

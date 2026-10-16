@@ -6,6 +6,7 @@ from pymongo import MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from .config import Settings
+from .business import business_id
 
 HISTORY_LIMIT = 100
 
@@ -24,7 +25,7 @@ class Repository:
         self.tickets = database.tickets
         self.state = database.state
         self.tickets.create_index("chat_id", unique=True)
-        self.tickets.create_index([("status", 1), ("updated_at", -1)])
+        self.tickets.create_index([('business_id', 1), ("status", 1), ("updated_at", -1)])
 
     @classmethod
     def connect(cls, settings: Settings):
@@ -39,8 +40,10 @@ class Repository:
 
     def receive(self, chat_id, message_id, name, text):
         timestamp = now()
+        active_id = business_id()
         base = {
             "_id": uuid4().hex, "chat_id": chat_id, "name": name,
+            'business_id': active_id,
             "created_at": timestamp, "updated_at": timestamp,
             "revision": 0, "status": "pendiente", "messages": [],
             "analysis": None, "draft": None, "delivery_state": "ninguno",
@@ -56,10 +59,12 @@ class Repository:
             {
                 "$push": {"messages": {"$each": [{
                     "role": "cliente", "text": text, "created_at": timestamp,
+                    'business_id': active_id,
                     "telegram_message_id": message_id,
                 }], "$slice": -HISTORY_LIMIT}},
                 "$inc": {"revision": 1},
                 "$set": {"name": name, "updated_at": timestamp,
+                         'business_id': active_id,
                          "last_customer_at": timestamp.isoformat(),
                          "status": "pendiente", "draft": None, "analysis": None,
                          "automation": {"failures": 0}},
@@ -74,17 +79,20 @@ class Repository:
         return ticket
 
     def list(self, status=None, limit=50):
-        query = {"status": status} if status else {}
+        query = {'business_id': business_id()}
+        if status:
+            query['status'] = status
         projection = {key: 1 for key in (
             "chat_id", "name", "revision", "status", "created_at", "updated_at",
-            "analysis", "draft", "delivery_state",
+            "analysis", "draft", "delivery_state", 'business_id', 'archived_message_count',
         )}
         projection["messages"] = {"$slice": -1}
         return list(self.tickets.find(query, projection).sort("updated_at", -1).limit(limit))
 
     def counts(self):
         counts = {key: 0 for key in ("pendiente", "revision", "respondida", "cerrada")}
-        for row in self.tickets.aggregate([{"$group": {"_id": "$status", "total": {"$sum": 1}}}]):
+        for row in self.tickets.aggregate([{'$match': {'business_id': business_id()}},
+                                           {"$group": {"_id": "$status", "total": {"$sum": 1}}}]):
             counts[row["_id"]] = row["total"]
         return counts
 
@@ -96,7 +104,7 @@ class Repository:
         """
         timestamp = now()
         return self.tickets.find_one_and_update(
-            {"status": {"$in": ["pendiente", "revision"]},
+            {'business_id': business_id(), "status": {"$in": ["pendiente", "revision"]},
              "last_customer_at": {"$gte": since.isoformat()},
              "updated_at": {"$lte": timestamp - timedelta(seconds=debounce_seconds)},
              "delivery_state": {"$nin": ["enviando", "incierto"]},
@@ -132,7 +140,7 @@ class Repository:
     def save_draft(self, ticket_id, revision, analysis, text):
         draft = {"id": uuid4().hex, "revision": revision, "text": text, "created_at": now()}
         ticket = self.tickets.find_one_and_update(
-            {"_id": ticket_id, "revision": revision, "status": {"$in": ["pendiente", "revision"]},
+            {"_id": ticket_id, 'business_id': business_id(), "revision": revision, "status": {"$in": ["pendiente", "revision"]},
              "delivery_state": {"$nin": ["enviando", "incierto"]}},
             {"$set": {"analysis": analysis, "draft": draft,
                        "status": "revision", "updated_at": now()}},
@@ -143,10 +151,10 @@ class Repository:
         return ticket
 
     def begin_send(self, ticket_id, draft_id, revision, text, *, analysis=None, origin='claude_desktop'):
-        attempt = {"id": uuid4().hex, "text": text, "revision": revision,
+        attempt = {"id": uuid4().hex, "text": text, "revision": revision, 'business_id': business_id(),
                    "created_at": now(), "draft_id": draft_id, 'analysis': analysis, 'origin': origin}
         ticket = self.tickets.find_one_and_update(
-            {"_id": ticket_id, "revision": revision, "draft.id": draft_id,
+            {"_id": ticket_id, 'business_id': business_id(), "revision": revision, "draft.id": draft_id,
              "draft.revision": revision, "draft.text": text, "status": "revision",
              "delivery_state": {"$nin": ["enviando", "incierto"]}},
             {"$set": {"delivery_state": "enviando", "attempt": attempt, "updated_at": now()}},
@@ -167,7 +175,8 @@ class Repository:
             "$set": {"delivery_state": "enviado", "attempt.telegram_message_id": telegram_message_id,
                      "attempt.finished_at": now(), "updated_at": now()},
             "$push": {"messages": {"$each": [{
-                "role": "agencia", "text": attempt["text"], "created_at": now(),
+                "role": "asistente", "text": attempt["text"], "created_at": now(),
+                'business_id': attempt.get('business_id', 'legacy'),
                 "telegram_message_id": telegram_message_id, "attempt_id": attempt_id,
                 "analysis": attempt.get('analysis'), "origin": attempt.get('origin', 'claude_desktop'),
             }], "$slice": -HISTORY_LIMIT}},

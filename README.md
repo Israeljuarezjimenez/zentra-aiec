@@ -1,4 +1,4 @@
-# Impresos San Martín · Zentra AIEC
+# Impresos San Martín · Atención por Telegram
 
 Panel local para recibir consultas de imprenta por Telegram, conservar conversaciones en MongoDB y consultar catálogos mediante RAG. **Claude es el único motor de redacción configurado.** El panel muestra historial, fuentes y estado de entrega, sin botones de aprobación de respuestas.
 
@@ -8,7 +8,7 @@ Claude necesita una sesión activa para redactar y ejecutar sus herramientas. La
 
 ![Catálogo de referencias de impresión, con proveedores y condiciones visibles](docs/catalogo.png)
 
-Vista de prueba del catálogo; los importes conservan su fuente externa.
+Catálogo de impresión; cada importe conserva su proveedor y fuente externa.
 
 ## Probar el panel sin cuentas
 
@@ -46,6 +46,28 @@ Para cargar los documentos y comprobar la recuperación sin cuentas externas:
 `load-examples` copia los documentos a `knowledge/` sin sobrescribir archivos. La primera indexación descarga los modelos de búsqueda; las consultas posteriores se ejecutan localmente. Estas búsquedas devuelven fragmentos y no generan respuestas de Claude.
 
 Si conservas documentos de la antigua agencia de demostración, muévelos fuera de `knowledge/` antes de indexar la imprenta. En la computadora donde se realizó esta adaptación se conservó una copia privada de los anteriores en `.runtime/imprenta-migration/`.
+
+## Datos e historial de la imprenta
+
+La identidad del negocio, moneda, categorías, perfil de Telegram y referencias están en `aiec/catalog.json`. El panel utiliza esa identidad en todas sus vistas. La ficha **La imprenta** (`/negocio`) muestra el alcance operativo y los datos comerciales disponibles; no sustituye información ausente por datos de un sitio del mismo nombre.
+
+Cada mensaje nuevo se identifica con `business_id=impresos-san-martin`. Claude, el buscador de contexto, la validación de evidencias y la cola usan únicamente mensajes de este negocio. El historial anterior se conserva en un apartado de archivo de la conversación, fuera del límite del historial activo; no se reutilizan sus presupuestos ni sus respuestas como condiciones de la imprenta.
+
+En instalaciones que ya tenían conversaciones, separa el historial con la fecha real de cambio, incluyendo zona horaria:
+
+```bash
+.venv/bin/python -m aiec migrate-business --since FECHA_ISO_CON_ZONA
+```
+
+Ejemplo de formato de fecha: `2026-10-15T16:17:45-06:00`. Ejecuta esta migración con el receptor y Claude Desktop cerrados. Primero crea un respaldo privado en `.runtime/business-backups/`; después clasifica los mensajes sin eliminar textos ni destinatarios. Comprueba revisión y fecha de actualización antes de cada cambio. Los envíos inciertos se conservan sin modificar y los conflictos se reportan. Una segunda ejecución no repite los cambios ya aplicados. Un mensaje nuevo vuelve a abrir la conversación para la imprenta.
+
+Para aplicar el nombre y las descripciones públicas del bot desde la misma configuración:
+
+```bash
+.venv/bin/python -m aiec sync-telegram-profile
+```
+
+El comando respalda el perfil anterior, actualiza la variante predeterminada y la española y verifica el resultado. No envía mensajes a clientes ni cambia el identificador `@…` del bot. Utiliza los métodos de [perfil de la API oficial de Telegram](https://core.telegram.org/bots/api#setmyname).
 
 ## Conectar las cuentas y recibir mensajes
 
@@ -140,7 +162,7 @@ El proyecto no confirma pagos, pedidos ni producción y no valida archivos de im
 .venv/bin/python -m aiec rag-eval
 ```
 
-`rag-eval` ejecuta un banco congelado de imprenta en una base temporal: 32 consultas con evidencia esperada y 16 consultas ajenas al negocio. Verifica origen y contenido del fragmento, normalizando acentos y separadores de miles. No mide la vigencia comercial de los precios ni la redacción de Claude. No llama a la API ni modifica la base activa.
+`rag-eval` ejecuta un banco congelado de imprenta en una base temporal: 36 consultas con evidencia esperada y 16 consultas ajenas al negocio. Verifica origen y contenido del fragmento, normalizando acentos y separadores de miles. No mide la vigencia comercial de los precios ni la redacción de Claude. No llama a la API ni modifica la base activa.
 
 El filtro exige más similitud a coincidencias solo semánticas que a resultados apoyados también por palabras exactas. La configuración de recuperación forma parte de la versión del contexto: cambiar sus umbrales invalida los contextos anteriores sin recalcular vectores que no cambiaron.
 

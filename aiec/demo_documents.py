@@ -1,4 +1,4 @@
-"""Instalar únicamente los documentos ficticios distribuidos con el proyecto."""
+"""Instalar los documentos públicos de la imprenta sin sobrescribir archivos privados."""
 import os
 from pathlib import Path
 

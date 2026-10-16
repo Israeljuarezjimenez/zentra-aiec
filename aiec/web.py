@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 
 from .repository import ConflictError
 from .service import catalog
+from .business import business_id, commercial_status, current_messages
 from .documents import EXTENSIONS, MAX_FILE_BYTES, read_document
 
 STATUSES = {"pendiente": "En cola", "revision": "Preparando respuesta", "respondida": "Respondida", "cerrada": "Archivada"}
@@ -57,6 +58,7 @@ def create_app(service, secret_key):
                 "business": catalog(), "automation": service.repo.automation_state(),
                 "automatic_enabled": service.responder is not None,
                 'system': state['system'], 'state_version': state['version'],
+                'commercial': commercial_status(),
                 "service_names": {s["id"]: s["name"] for s in catalog()["services"]},
                 "csrf": session["csrf"], "counts": state['counts']}
 
@@ -82,7 +84,9 @@ def create_app(service, secret_key):
             ticket = service.repo.get(ticket_id)
         except ValueError:
             abort(404)
-        return render_template("detail.html", ticket=ticket)
+        active = current_messages(ticket)
+        archived = ticket.get('archived_messages', []) + [m for m in ticket['messages'] if m.get('business_id') != business_id()]
+        return render_template("detail.html", ticket=ticket, active_messages=active, archived_messages=archived)
 
     def current_revision():
         try:
@@ -126,6 +130,10 @@ def create_app(service, secret_key):
     @app.get('/catalogo')
     def catalog_page():
         return render_template('catalog.html')
+
+    @app.get('/negocio')
+    def business_profile():
+        return render_template('business.html')
 
     @app.get("/guia")
     def guide():
