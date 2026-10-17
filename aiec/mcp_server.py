@@ -13,8 +13,7 @@ from .telegram import DeliveryUncertain, TelegramRejected
 
 INSTRUCTIONS = """Eres el asistente de atención de Impresos San Martín.
 El usuario autorizó el envío directo: cuando tengas la respuesta lista, llama
-responder_cliente. Esa herramienta utiliza WhatsApp o Telegram según la conversación
-y la registra en el historial. No cambies el canal ni el destinatario de un cliente.
+responder_cliente. Esa herramienta la envía por Telegram y la registra en el historial.
 No hay una etapa de aprobación en el panel. No te limites a imprimir la respuesta en
 este chat ni digas que se envió si no recibiste sent=true de la herramienta.
 guardar_borrador fue retirada: no esperes a que se reconecte ni ofrezcas pegar texto
@@ -59,7 +58,6 @@ def reply_workflow(ticket=None):
         'instruction': (
             'El cambio a la imprenta es intencional. Usa el catálogo actual. '
             'Para atender la solicitud, llama responder_cliente con su revisión y fuentes. '
-            'La conversación indica su canal; no necesitas un teléfono o chat elegido manualmente. '
             'Escribir el texto en el chat de Claude no lo entrega al cliente. '
             'guardar_borrador fue retirada y no debe reconectarse. '
             'Respeta cualquier instrucción explícita vigente del usuario que limite un envío.'
@@ -78,8 +76,6 @@ def create_mcp(service: Service):
     read_only = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 
     def activity(tool):
-        if service.channel_refresh is not None:
-            service.channel_refresh(service)
         service.repo.state.update_one({'_id': 'claude_desktop'}, {'$set': {
             'last_seen_at': now(), 'last_tool': tool,
         }}, upsert=True)
@@ -127,21 +123,20 @@ def create_mcp(service: Service):
             return {'status': 'no_disponible', 'results': [], 'message': 'RAG no está conectado en esta demo.'}
         return service.knowledge.search(consulta, limite)
 
-    @server.tool(annotations=ToolAnnotations(title='Responder al cliente por su canal', readOnlyHint=False,
+    @server.tool(annotations=ToolAnnotations(title='Responder al cliente por Telegram', readOnlyHint=False,
                     destructiveHint=False, idempotentHint=True, openWorldHint=True))
     def responder_cliente(
         id_solicitud: str, revision: int, analisis: Analysis, respuesta: str,
         rag_context_id: str | None = None, fuentes: list[SourceCitation] | None = None,
     ) -> dict:
-        """ENVÍA INMEDIATAMENTE por el canal de la conversación (WhatsApp o Telegram), sin aprobación en el panel.
+        """ENVÍA INMEDIATAMENTE la respuesta de Claude al cliente por Telegram, sin aprobación en el panel.
 
         Lee primero obtener_solicitud. Usa su revisión y context_id, citas exactas del
         cliente en evidence y fuentes literales del RAG en fuentes. Los importes externos
         necesitan proveedor y enlace en respuesta. No inventes precios ni plazos.
         El destinatario se obtiene de la conversación; no se puede sustituir por otro chat.
         Repetir la misma respuesta y revisión devuelve el comprobante sin reenviarla.
-        sent=true confirma la aceptación del envío; en WhatsApp no confirma entrega ni lectura.
-        sent=null indica que no pudo confirmarse: NO repetir.
+        sent=true confirma el envío; sent=null indica que no pudo confirmarse: NO repetir.
         """
         activity('responder_cliente')
         try:
@@ -149,11 +144,11 @@ def create_mcp(service: Service):
                 rag_context_id=rag_context_id, sources=fuentes, origin='claude_desktop')
         except DeliveryUncertain:
             return {'id': id_solicitud, 'sent': None, 'delivery_state': 'incierto',
-                    'message': 'El canal no confirmó el envío. No lo repitas; el intento quedó conservado.'}
+                    'message': 'Telegram no confirmó la entrega. No repitas el envío; el intento quedó conservado.'}
         except TelegramRejected as error:
             return {'id': id_solicitud, 'sent': False, 'delivery_state': 'rechazado',
                     'retry_after': error.retry_after,
-                    'message': str(error)+' No se confirmó el envío.'}
+                    'message': f'Telegram rechazó la respuesta (código {error.code}). No se confirmó su entrega.'}
         except PyMongoError:
             return {'id': id_solicitud, 'sent': None, 'delivery_state': 'sin_confirmar',
                     'message': 'No se confirmó el registro en MongoDB. Consulta el estado antes de intentar de nuevo.'}

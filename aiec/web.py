@@ -135,11 +135,6 @@ def create_app(service, secret_key):
     def business_profile():
         return render_template('business.html')
 
-    @app.get('/whatsapp')
-    def whatsapp_setup():
-        return render_template('whatsapp.html', connection=service.whatsapp_setup(),
-            verify_token=service.settings.whatsapp_verify_token if service.settings else '')
-
     @app.get("/guia")
     def guide():
         return render_template("guide.html")

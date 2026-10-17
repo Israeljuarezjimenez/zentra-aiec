@@ -40,7 +40,7 @@ def review_prompt(ticket_id=None):
         f"Consulta el catálogo de Impresos San Martín y {target} con las herramientas AIEC. "
         "El cambio a la imprenta es intencional. En esta tarea autorizo el envío directo. "
         "Lee hasta cinco pendientes con obtener_solicitud. Redacta y llama responder_cliente para enviar "
-        "cada respuesta directamente por el canal de su conversación, sin aprobación en el panel. Usa la revisión actual, "
+        "cada respuesta directamente por Telegram, sin aprobación en el panel. Usa la revisión actual, "
         "rag_context_id y citas literales de las fuentes usadas. Comprueba sent=true y resume los envíos reales. "
         "guardar_borrador fue retirada; no esperes su reconexión ni dejes solo un texto sin enviar. "
         "No repitas entregas inciertas ni afirmes que seguirás activo después de este turno.\n\n"

@@ -1,7 +1,6 @@
-"""Operaciones atómicas sobre conversaciones, separadas por canal y cliente."""
+"""Operaciones atómicas sobre una conversación por cliente de Telegram."""
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
-import hashlib
 
 from pymongo import MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -25,13 +24,8 @@ class Repository:
         self.database = database
         self.tickets = database.tickets
         self.state = database.state
-        self.whatsapp_inbox = database.whatsapp_inbox
-        self.whatsapp_delivery = database.whatsapp_delivery
         self.tickets.create_index("chat_id", unique=True)
         self.tickets.create_index([('business_id', 1), ("status", 1), ("updated_at", -1)])
-        self.whatsapp_inbox.create_index([('processed', 1), ('received_at', 1)])
-        self.whatsapp_inbox.create_index('expires_at', expireAfterSeconds=0)
-        self.whatsapp_delivery.create_index('expires_at', expireAfterSeconds=0)
 
     @classmethod
     def connect(cls, settings: Settings):
@@ -44,15 +38,12 @@ class Repository:
         client.admin.command("ping")
         return cls(client[settings.database])
 
-    def receive(self, chat_id, message_id, name, text, *, channel='telegram', recipient_id=None, customer_at=None):
-        if channel not in ('telegram', 'whatsapp'):
-            raise ValueError('Canal de mensajes no válido.')
+    def receive(self, chat_id, message_id, name, text):
         timestamp = now()
         active_id = business_id()
         base = {
             "_id": uuid4().hex, "chat_id": chat_id, "name": name,
             'business_id': active_id,
-            'channel': channel, 'recipient_id': recipient_id or str(chat_id),
             "created_at": timestamp, "updated_at": timestamp,
             "revision": 0, "status": "pendiente", "messages": [],
             "analysis": None, "draft": None, "delivery_state": "ninguno",
@@ -63,22 +54,20 @@ class Repository:
             # Dos receptores podrían intentar crear la misma conversación.
             pass
         ticket = self.tickets.find_one({"chat_id": chat_id}, {"_id": 1})
-        incoming = {'role':'cliente', 'text':text, 'created_at':timestamp,
-                    'business_id':active_id, 'provider_message_id':message_id, 'channel':channel}
-        if channel == 'telegram':
-            incoming['telegram_message_id'] = message_id
         result = self.tickets.update_one(
-            {"_id": ticket["_id"], "messages.telegram_message_id": {"$ne": message_id},
-             'messages.provider_message_id': {'$ne': message_id}},
+            {"_id": ticket["_id"], "messages.telegram_message_id": {"$ne": message_id}},
             {
-                "$push": {"messages": {"$each": [incoming], "$slice": -HISTORY_LIMIT}},
+                "$push": {"messages": {"$each": [{
+                    "role": "cliente", "text": text, "created_at": timestamp,
+                    'business_id': active_id,
+                    "telegram_message_id": message_id,
+                }], "$slice": -HISTORY_LIMIT}},
                 "$inc": {"revision": 1},
                 "$set": {"name": name, "updated_at": timestamp,
                          'business_id': active_id,
-                         'channel': channel, 'recipient_id': recipient_id or str(chat_id),
+                         "last_customer_at": timestamp.isoformat(),
                          "status": "pendiente", "draft": None, "analysis": None,
                          "automation": {"failures": 0}},
-                '$max': {'last_customer_at':(customer_at or timestamp).isoformat()},
             },
         )
         return ticket["_id"], bool(result.modified_count)
@@ -95,7 +84,7 @@ class Repository:
             query['status'] = status
         projection = {key: 1 for key in (
             "chat_id", "name", "revision", "status", "created_at", "updated_at",
-            "analysis", "draft", "delivery_state", 'business_id', 'archived_message_count', 'channel',
+            "analysis", "draft", "delivery_state", 'business_id', 'archived_message_count',
         )}
         projection["messages"] = {"$slice": -1}
         return list(self.tickets.find(query, projection).sort("updated_at", -1).limit(limit))
@@ -162,9 +151,8 @@ class Repository:
         return ticket
 
     def begin_send(self, ticket_id, draft_id, revision, text, *, analysis=None, origin='claude_desktop'):
-        channel = self.get(ticket_id).get('channel', 'telegram')
         attempt = {"id": uuid4().hex, "text": text, "revision": revision, 'business_id': business_id(),
-                   "created_at": now(), "draft_id": draft_id, 'analysis': analysis, 'origin': origin, 'channel':channel}
+                   "created_at": now(), "draft_id": draft_id, 'analysis': analysis, 'origin': origin}
         ticket = self.tickets.find_one_and_update(
             {"_id": ticket_id, 'business_id': business_id(), "revision": revision, "draft.id": draft_id,
              "draft.revision": revision, "draft.text": text, "status": "revision",
@@ -183,23 +171,15 @@ class Repository:
             raise ConflictError("El intento de envío ya no coincide.")
         query = {"_id": ticket_id, "attempt.id": attempt_id,
                  "delivery_state": {"$in": ["enviando", "incierto"]}}
-        channel = attempt.get('channel', 'telegram')
-        message = {
-            'role':'asistente', 'text':attempt['text'], 'created_at':now(), 'channel':channel,
-            'business_id':attempt.get('business_id', 'legacy'), 'provider_message_id':telegram_message_id,
-            'attempt_id':attempt_id, 'analysis':attempt.get('analysis'),
-            'origin':attempt.get('origin', 'claude_desktop'),
-        }
-        receipt = {'attempt.provider_message_id':telegram_message_id}
-        if channel == 'telegram':
-            message['telegram_message_id'] = telegram_message_id
-            receipt['attempt.telegram_message_id'] = telegram_message_id
-        else:
-            receipt.update({'attempt.provider_delivery_status':'accepted', 'attempt.provider_status_rank':0})
         update = {
-            "$set": {"delivery_state": "enviado", **receipt,
+            "$set": {"delivery_state": "enviado", "attempt.telegram_message_id": telegram_message_id,
                      "attempt.finished_at": now(), "updated_at": now()},
-            "$push": {"messages": {"$each": [message], "$slice": -HISTORY_LIMIT}},
+            "$push": {"messages": {"$each": [{
+                "role": "asistente", "text": attempt["text"], "created_at": now(),
+                'business_id': attempt.get('business_id', 'legacy'),
+                "telegram_message_id": telegram_message_id, "attempt_id": attempt_id,
+                "analysis": attempt.get('analysis'), "origin": attempt.get('origin', 'claude_desktop'),
+            }], "$slice": -HISTORY_LIMIT}},
         }
         # Historial, estado y eliminación del borrador se confirman en una sola escritura.
         # Un fallo después de esta escritura no permite reenviar el mismo borrador.
@@ -210,8 +190,6 @@ class Repository:
         if not result.matched_count:
             # Si el cliente escribió mientras enviábamos, conservamos su estado pendiente.
             self.tickets.update_one(query, update)
-        if channel == 'whatsapp':
-            self._apply_whatsapp_status(telegram_message_id)
 
     def send_failed(self, ticket_id, attempt_id, *, uncertain):
         self.tickets.update_one(
@@ -247,51 +225,3 @@ class Repository:
 
     def checkpoint(self, bot_id, offset):
         self.state.update_one({"_id": f"telegram:{bot_id}"}, {"$max": {"offset": offset}}, upsert=True)
-
-    def queue_whatsapp(self, phone_number_id, message_id, sender, name, text, customer_at):
-        key = hashlib.sha256((phone_number_id+':'+message_id).encode()).hexdigest()
-        result = self.whatsapp_inbox.update_one({'_id':key}, {'$setOnInsert': {
-            'business_id':business_id(), 'phone_number_id':phone_number_id, 'message_id':message_id,
-            'sender':sender, 'name':name, 'text':text, 'customer_at':customer_at,
-            'received_at':now(), 'expires_at':now()+timedelta(days=30), 'processed':False,
-        }}, upsert=True)
-        return result.upserted_id is not None
-
-    def process_whatsapp_inbox(self):
-        event = self.whatsapp_inbox.find_one_and_update(
-            {'processed':False, 'business_id':business_id(), '$or':[
-                {'lease_until':{'$exists':False}}, {'lease_until':{'$lte':now()}}]},
-            {'$set':{'lease_until':now()+timedelta(seconds=60)}},
-            sort=[('received_at',1)], return_document=ReturnDocument.AFTER)
-        if event is None:
-            return False
-        key = 'whatsapp:'+event['phone_number_id']+':'+event['sender']
-        self.receive(key, event['message_id'], event['name'], event['text'],
-                     channel='whatsapp', recipient_id=event['sender'], customer_at=event['customer_at'])
-        self.whatsapp_inbox.update_one({'_id':event['_id']},
-            {'$set':{'processed':True, 'processed_at':now()}, '$unset':{'lease_until':''}})
-        return True
-
-    def whatsapp_status(self, message_id, status, timestamp):
-        if not isinstance(status, str):
-            return
-        rank = {'sent':1, 'failed':2, 'delivered':3, 'read':4}.get(status)
-        if rank is None:
-            return
-        self.whatsapp_delivery.update_one({'_id':message_id}, {
-            '$max': {'rank':rank}, '$set': {'updated_at':timestamp},
-            '$setOnInsert':{'expires_at':now()+timedelta(days=30)},
-        }, upsert=True)
-        self._apply_whatsapp_status(message_id)
-
-    def _apply_whatsapp_status(self, message_id):
-        receipt = self.whatsapp_delivery.find_one({'_id':message_id})
-        if not receipt:
-            return
-        rank = receipt['rank']
-        status = {1:'sent',2:'failed',3:'delivered',4:'read'}[rank]
-        self.tickets.update_one({'channel':'whatsapp', 'attempt.provider_message_id':message_id,
-            'attempt.provider_status_rank':{'$lt':rank}}, {'$set':{
-                'attempt.provider_delivery_status':status, 'attempt.provider_status_rank':rank,
-                'attempt.provider_status_at':receipt['updated_at'], 'updated_at':now(),
-            }})

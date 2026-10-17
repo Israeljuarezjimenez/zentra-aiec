@@ -29,9 +29,9 @@ def process_one(service, since, *, debounce_seconds=2, stop=None):
         # Un mensaje nuevo vuelve a la cola con la revisión actual; no enviar texto viejo.
         pass
     except DeliveryUncertain:
-        error = "El canal no confirmó el envío. No se repetirá automáticamente."
+        error = "Telegram no confirmó la entrega. No se repetirá el envío automáticamente."
     except TelegramRejected as exc:
-        error = str(exc)
+        error = f"Telegram rechazó el envío (código {exc.code})."
     except (ValueError, OSError):
         # No guardar mensajes del proveedor o URLs que puedan contener datos privados.
         error = "No se pudo preparar una respuesta válida. Revisa el motor y las fuentes."

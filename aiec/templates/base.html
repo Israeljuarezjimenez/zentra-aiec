@@ -8,14 +8,14 @@
   <meta name="theme-color" content="#0b1019">
   <title>{% block title %}Solicitudes{% endblock %} · {{ business.business }}</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='imprenta-whatsapp-1') }}">
-  <script src="{{ url_for('static', filename='app.js', v='imprenta-whatsapp-1') }}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='imprenta-3') }}">
+  <script src="{{ url_for('static', filename='app.js', v='imprenta-3') }}" defer></script>
 </head>
 <body data-state-version="{{ state_version }}" data-live="{{ 'true' if not demo and request.endpoint in ['inbox', 'detail'] else 'false' }}">
   <a class="skip-link" href="#main">Ir al contenido</a>
   <aside class="sidebar">
     <a class="brand" href="{{ url_for('inbox') }}"><span class="brand-mark"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M10 12V5h12v7M10 23H6V12h20v11h-4M10 19h12v9H10zM22 16h1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="brand-name">{{ business.business }}<span class="brand-period">.</span><small>IMPRESIÓN Y DISEÑO</small></span></a>
-    <div class="workspace-label"><span class="workspace-avatar">{{ business.brand_initials }}</span><span>{{ business.business }}<small>Atención al cliente</small></span></div>
+    <div class="workspace-label"><span class="workspace-avatar">{{ business.brand_initials }}</span><span>{{ business.business }}<small>Atención por Telegram</small></span></div>
     <div class="nav-label">TU ESPACIO</div>
     <nav aria-label="Navegación principal">
       <a class="nav-link {% if request.endpoint in ['inbox', 'detail'] %}active{% endif %}" href="{{ url_for('inbox') }}">{{ icon('inbox') }} <span>Solicitudes</span><span class="nav-count">{{ counts.pendiente + counts.revision }}</span></a>
@@ -23,13 +23,12 @@
       <a class="nav-link {% if request.endpoint in ['knowledge', 'knowledge_upload', 'knowledge_index'] %}active{% endif %}" href="{{ url_for('knowledge') }}">{{ icon('search') }} <span>Conocimiento</span></a>
       <a class="nav-link {% if request.endpoint == 'guide' %}active{% endif %}" href="{{ url_for('guide') }}">{{ icon('book') }} <span>Cómo usarlo</span></a>
       <a class="nav-link {% if request.endpoint == 'business_profile' %}active{% endif %}" href="{{ url_for('business_profile') }}">{{ icon('shield') }} <span>La imprenta</span></a>
-      <a class="nav-link {% if request.endpoint == 'whatsapp_setup' %}active{% endif %}" href="{{ url_for('whatsapp_setup') }}">{{ icon('message') }} <span>WhatsApp</span></a>
     </nav>
     <div class="sidebar-assistant"><span class="assistant-symbol">{{ icon('spark', 25) }}</span><h2>Cada pieza.<br>Con la información correcta.</h2><p>Información con fuentes.<br>Atención con Claude.</p><a href="{{ url_for('guide') }}">Conoce el flujo {{ icon('arrow', 16) }}</a></div>
     <div class="sidebar-note"><span class="status-light"></span><span>Ejecutándose en tu Mac<small>{{ business.business }} · AIEC</small></span></div>
   </aside>
   <div class="workspace">
-    <header class="topbar"><div class="breadcrumb">Tu espacio <span>/</span> <strong>{{ 'Cómo usarlo' if request.endpoint == 'guide' else 'Catálogo' if request.endpoint == 'catalog_page' else 'Conocimiento' if request.endpoint == 'knowledge' else 'La imprenta' if request.endpoint == 'business_profile' else 'WhatsApp' if request.endpoint == 'whatsapp_setup' else 'Solicitudes' }}</strong></div><div class="topbar-right"><span class="mode-pill">{{ icon('shield', 14) }} {{ 'Demo local' if demo else 'Claude API' if automatic_enabled else 'Claude Desktop · atención asistida' }}</span><span class="operator-avatar" aria-label="{{ business.business }}">{{ business.brand_initials }}</span></div></header>
+    <header class="topbar"><div class="breadcrumb">Tu espacio <span>/</span> <strong>{{ 'Cómo usarlo' if request.endpoint == 'guide' else 'Catálogo' if request.endpoint == 'catalog_page' else 'Conocimiento' if request.endpoint == 'knowledge' else 'La imprenta' if request.endpoint == 'business_profile' else 'Solicitudes' }}</strong></div><div class="topbar-right"><span class="mode-pill">{{ icon('shield', 14) }} {{ 'Demo local' if demo else 'Claude API' if automatic_enabled else 'Claude Desktop · envío directo' }}</span><span class="operator-avatar" aria-label="{{ business.business }}">{{ business.brand_initials }}</span></div></header>
     <main id="main">
       {% if demo %}<div class="demo-banner">{{ icon('info', 18) }} <p><strong>Modo demostración.</strong> Solo las conversaciones son de ejemplo. El catálogo contiene referencias reales publicadas por otras imprentas. Este modo no envía mensajes.</p></div>{% endif %}
       {% for category, message in get_flashed_messages(with_categories=true) %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
