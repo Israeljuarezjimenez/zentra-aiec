@@ -61,7 +61,7 @@ def main(argv=None):
         return 0
 
     from .bot import check_bot
-    from .repository import Repository
+    from .repository import DeferredRepository, Repository
     from .service import Service, catalog
     from .telegram import DeliveryUncertain, Telegram, TelegramRejected
 
@@ -111,7 +111,8 @@ def main(argv=None):
             service = demo_service()
         else:
             settings.validate(telegram=args.command in ("run", "doctor", "mcp", 'sync-telegram-profile'), web=args.command == "run")
-            repo = Repository.connect(settings)
+            repo = (DeferredRepository(lambda: Repository.connect(settings))
+                    if args.command == "mcp" else Repository.connect(settings))
             service = Service(repo, Telegram(settings.bot_token) if args.command in ("run", "doctor", "mcp", 'sync-telegram-profile') else None,
                               knowledge=KnowledgeBase())
             if args.command == "run":
@@ -144,7 +145,11 @@ def main(argv=None):
 
         if args.command == "mcp":
             from .mcp_server import create_mcp
-            create_mcp(service).run(transport="stdio")
+            try:
+                create_mcp(service).run(transport="stdio")
+            finally:
+                if isinstance(service.repo, DeferredRepository):
+                    service.repo.close()
             return 0
 
         from dataclasses import replace

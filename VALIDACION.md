@@ -1,12 +1,14 @@
 # Validación de Impresos San Martín
 
-Restauración del flujo de Telegram comprobada el 17 de octubre de 2026. Se ejecutó la suite completa y se verificaron las conexiones reales de Telegram y MongoDB, el panel local y las herramientas MCP. El catálogo reúne fuentes públicas reales. Las pruebas de envío utilizan conversaciones de ejemplo y transporte simulado para no contactar clientes; esto no convierte el catálogo en información inventada.
+Conexión y recuperación de las herramientas MCP comprobadas el 9 de noviembre de 2026. Se ejecutó la suite completa y se verificaron las conexiones reales de Telegram y MongoDB, el panel local y las herramientas MCP. El catálogo reúne fuentes públicas reales. Las pruebas de envío utilizan conversaciones de ejemplo y transporte simulado para no contactar clientes; esto no convierte el catálogo en información inventada.
 
 | Área | Resultado observado |
 | --- | --- |
-| Pruebas automatizadas | 106 pruebas aprobadas. Dependencias bloqueadas verificadas. |
+| Pruebas automatizadas | 110 pruebas aprobadas. |
 | Conexiones reales | MongoDB e índices disponibles; bot de Telegram válido y receptor activo; panel local accesible. La comprobación no envía mensajes. |
 | Protocolo MCP | Comunicación real por stdio: consultar solicitud, recuperar fuentes, responder y obtener comprobante. Telegram simulado. |
+| Recuperación de MongoDB | El arranque y la publicación de las seis herramientas no requieren contactar Atlas. Una prueba del CLI por stdio simula una caída, comprueba el catálogo y la búsqueda local, informa el error sin divulgar datos privados y recupera lectura y envío simulado en la misma sesión. |
+| Recursos de conexión | Las llamadas simultáneas comparten una conexión diferida. Los clientes se cierran si falla el ping o la preparación de índices y al terminar la sesión MCP. |
 | Envío directo | Sin aprobación en el panel. Una llamada repetida devuelve el comprobante sin repetir la entrega. |
 | Contexto de negocio | Mensajes con identidad de negocio; historial anterior archivado y excluido de Claude, RAG, evidencias y presupuestos. Migración con respaldo privado y control de concurrencia. El archivo se conserva aunque el historial activo alcance su límite de 100 mensajes. |
 | Perfil de Telegram | Nombre y descripciones sincronizados en español y por defecto, sin enviar mensajes. |

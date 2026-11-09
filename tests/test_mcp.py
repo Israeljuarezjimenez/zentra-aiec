@@ -91,6 +91,59 @@ def test_real_stdio_validates_rag_sends_directly_and_deduplicates(tmp_path):
     asyncio.run(exercise())
 
 
+def test_cli_mcp_survives_database_outage_and_recovers_in_the_same_session(tmp_path):
+    async def exercise():
+        parameters = StdioServerParameters(command=sys.executable,
+            args=[str(ROOT/'tests/mcp_fixture_server.py'),str(tmp_path),'--recoverable-database'],
+            env={'PYTHONPATH':str(ROOT), 'MONGODB_URI':'mongodb://127.0.0.1:1/test',
+                 'TELEGRAM_BOT_TOKEN':'123456789:unit-test-telegram-token',
+                 'MONGODB_DATABASE':'test', 'AUTO_REPLY_ENABLED':'false', 'ANTHROPIC_API_KEY':''},
+            cwd=str(ROOT))
+        async with stdio_client(parameters) as (reader,writer):
+            async with ClientSession(reader,writer) as session:
+                await asyncio.wait_for(session.initialize(), timeout=10)
+                assert len((await session.list_tools()).tools)==6
+                assert not (tmp_path/'connection-attempts').exists()
+                catalog=unpack(await session.call_tool('consultar_catalogo',{}))
+                assert catalog['reply_workflow']['panel_approval_required'] is False
+                assert not (tmp_path/'connection-attempts').exists()
+
+                offline=unpack(await session.call_tool('estado_sistema',{}))
+                assert offline['mcp_connected'] and not offline['database_available']
+                assert not offline['delivery_ready']
+                assert 'PRIVATE_DATABASE_ERROR' not in str(offline)
+                unavailable=await session.call_tool('listar_solicitudes',{})
+                assert unavailable.isError
+                assert 'Las herramientas AIEC siguen conectadas' in unavailable.content[0].text
+                assert 'PRIVATE_DATABASE_ERROR' not in unavailable.content[0].text
+                assert len((await session.list_tools()).tools)==6
+                local=unpack(await session.call_tool('buscar_conocimiento',{'consulta':'QA_PRINT_SOURCE'}))
+                assert local['results']
+                assert len((tmp_path/'connection-attempts').read_text().splitlines())==2
+
+                (tmp_path/'mongodb-ready').touch()
+                pending=await session.call_tool('listar_solicitudes',{})
+                assert not pending.isError
+                ticket_id=pending.structuredContent['result'][0]['id']
+                ticket=unpack(await session.call_tool('obtener_solicitud',{
+                    'id_solicitud':ticket_id,'consulta_conocimiento':'QA_PRINT_SOURCE medida cantidad acabado'}))
+                hit=ticket['knowledge_context']['results'][0]
+                payload={'id_solicitud':ticket_id,'revision':ticket['revision'],
+                    'analisis':{'service':'offset','summary':'Solicitud de volantes.', 'priority':'media',
+                        'priority_reason':'Sin urgencia explícita.', 'evidence':['Necesito volantes QA_PRINT_SOURCE'],
+                        'missing_data':['Tarifa propia no cargada.']},
+                    'respuesta':'Tu solicitud de volantes quedó registrada. Podemos orientar el material y acabado.',
+                    'rag_context_id':ticket['knowledge_context']['context_id'],
+                    'fuentes':[{'chunk_id':hit['id'],'quote':hit['text']}]}
+                sent=unpack(await session.call_tool('responder_cliente',payload))
+                assert sent['sent'] and not sent['already_sent']
+                assert unpack(await session.call_tool('responder_cliente',payload))['already_sent']
+                recovered=unpack(await session.call_tool('estado_sistema',{}))
+                assert recovered['mcp_connected'] and recovered['database_available'] and recovered['delivery_ready']
+                assert len((tmp_path/'connection-attempts').read_text().splitlines())==3
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize('status,delivery,next_action', [
     ('pendiente', 'ninguno', 'responder_cliente'),
     # Un envío de la conversación anterior no responde al mensaje nuevo.

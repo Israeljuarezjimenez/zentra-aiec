@@ -46,6 +46,23 @@ def main():
     kb=KnowledgeBase(folder,root/'rag',embedder=Embedder(),reranker=Reranker()); kb.index()
     repo=Repository(mongomock.MongoClient(tz_aware=True).mcp_test)
     repo.receive(1001,1,'Cliente de prueba','Necesito volantes QA_PRINT_SOURCE para mi negocio.')
+    if '--recoverable-database' in sys.argv:
+        from pymongo.errors import ServerSelectionTimeoutError
+        import aiec.rag
+        import aiec.telegram
+        from aiec.__main__ import main as run_cli
+
+        def connect(_cls, _settings):
+            with (root/'connection-attempts').open('a') as output:
+                output.write('attempt\n')
+            if not (root/'mongodb-ready').exists():
+                raise ServerSelectionTimeoutError('PRIVATE_DATABASE_ERROR_DO_NOT_EXPOSE')
+            return repo
+
+        Repository.connect=classmethod(connect)
+        aiec.rag.KnowledgeBase=lambda:kb
+        aiec.telegram.Telegram=lambda _token:TelegramTransport()
+        raise SystemExit(run_cli(['mcp']))
     create_mcp(Service(repo,TelegramTransport(),knowledge=kb)).run(transport='stdio')
 
 

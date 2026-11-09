@@ -1,6 +1,7 @@
 """Operaciones atómicas sobre una conversación por cliente de Telegram."""
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
+from threading import RLock
 
 from pymongo import MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -19,6 +20,33 @@ class ConflictError(ValueError):
     """La conversación cambió o la operación ya fue ejecutada."""
 
 
+class DeferredRepository:
+    """Permitir iniciar MCP sin red; conectar al solicitar datos de conversaciones."""
+
+    def __init__(self, connect):
+        self._connect = connect
+        self._repository = None
+        self._lock = RLock()
+
+    @property
+    def initialized(self):
+        return self._repository is not None
+
+    def __getattr__(self, name):
+        with self._lock:
+            if self._repository is None:
+                # No conservar una conexión fallida: la próxima llamada puede recuperarse.
+                self._repository = self._connect()
+            repository = self._repository
+        return getattr(repository, name)
+
+    def close(self):
+        with self._lock:
+            if self._repository is not None:
+                self._repository.database.client.close()
+                self._repository = None
+
+
 class Repository:
     def __init__(self, database):
         self.database = database
@@ -35,8 +63,12 @@ class Repository:
             connectTimeoutMS=7000, socketTimeoutMS=15000, tz_aware=True,
             appname="AIEC", maxPoolSize=5,
         )
-        client.admin.command("ping")
-        return cls(client[settings.database])
+        try:
+            client.admin.command("ping")
+            return cls(client[settings.database])
+        except Exception:
+            client.close()
+            raise
 
     def receive(self, chat_id, message_id, name, text):
         timestamp = now()

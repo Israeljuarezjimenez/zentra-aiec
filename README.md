@@ -111,6 +111,10 @@ Reinicia Claude Desktop una vez después de actualizar las herramientas. Puedes 
 
 Las herramientas disponibles son `estado_sistema`, `consultar_catalogo`, `listar_solicitudes`, `obtener_solicitud`, `buscar_conocimiento` y `responder_cliente`. Esta última **envía**, no guarda un borrador pendiente. El destinatario proviene del registro de la conversación y no se puede sustituir por un chat arbitrario.
 
+Si Atlas pierde la conexión, el servidor MCP mantiene publicadas sus herramientas. El catálogo y la búsqueda documental local siguen disponibles. `estado_sistema` distingue la conexión de herramientas (`mcp_connected`) de la disponibilidad de conversaciones (`database_available`); mientras la base no responda, informa `delivery_ready=false`. La siguiente lectura vuelve a intentar conectar después de corregir el acceso a Atlas. Los errores no revelan direcciones ni credenciales y no sustituyen el historial actual por una revisión recordada del chat.
+
+Después de actualizar el servidor, sal de Claude Desktop con **⌘Q**, vuelve a abrirlo e inicia un chat nuevo para cargar las herramientas e instrucciones actuales. Cerrar solamente la ventana no termina la aplicación. Una tarea de atender solicitudes autoriza el envío directo; solo se prepara una vista previa cuando el usuario limita expresamente el envío. Los permisos propios de Claude siguen correspondiendo a su aplicación.
+
 `guardar_borrador` fue retirada. Si un chat antiguo intenta usarla o dice que no enviará, utiliza la instrucción anterior para establecer la tarea actual. No hay que esperar a que vuelva esa herramienta. El catálogo, el estado y la lectura de cada solicitud incluyen `reply_workflow` para indicar el flujo vigente; este recordatorio respeta cualquier restricción explícita de envío que mantenga el usuario.
 
 El comprobante devuelve `sent=true`, el identificador de Telegram y `already_sent` cuando se repitió una llamada ya completada. Una misma revisión no puede recibir dos respuestas. Si el cliente escribió durante la preparación, la herramienta exige leer la versión actual. Una entrega incierta queda bloqueada para no duplicarla.
